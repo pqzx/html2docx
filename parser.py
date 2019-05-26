@@ -1,158 +1,194 @@
 """
 Make 'span' in tags dict a stack
 maybe do the same for all tags in case of unclosed tags?
+optionally use bs4 to clean up invalid html?
 
 the idea is that there is a method that converts html files into docx
 but also have api methods that let user have more control e.g. so they
 can nest calls to something like 'convert_chunk' in loops
 
-also, user can still access Document methods directly (risky?)
+user can pass existing document object as arg 
+(if they want to manage rest of document themselves)
 
 deal with tables
 ignore 'code'
 """
+import re, sys, argparse
 from html.parser import HTMLParser
+
 from docx import Document
 from docx.shared import RGBColor, Pt, Inches
 from docx.enum.text import WD_COLOR, WD_ALIGN_PARAGRAPH
 
-import re
+try:
+    from bs4 import BeautifulSoup
+except ImportError:
+    BeautifulSoup = None
 
-style_map = {
-    'b': 'bold',
-    'strong': 'bold',
-    'em': 'italic',
-    's': 'strikethrough',
-    'u': 'underline',
-    'p': 'paragraph',
-    'ul': 'unordered list',
-    'li': 'list item',
-    # TODO sort this out?
-}
+# values in inches
+INDENT = 0.25
+LIST_INDENT = 0.5
+MAX_INDENT = 5.5
 
-style_type = {
-    'b': 'font',
-    'strong': 'font',
-}
+def remove_last_occurence(ls, x):
+    ls.pop(len(ls) - ls[::-1].index(x) - 1)
 
-last_tag = None
+def remove_whitespace(string):
+    string = re.sub(r'\s*\n\s*', ' ', string)
+    return re.sub(r'>\s{2+}<', '><', string)
 
-class MyHTMLParser(HTMLParser):
-    
-    # def __init__(self):
-    #     self.styles = {}
+class HtmlToDocx(HTMLParser):
+
+    def add_styles_to_paragraph(self, style):
+        if 'text-align' in style:
+            align = style['text-align']
+            if align == 'center':
+                self.paragraph.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            elif align == 'right':
+                self.paragraph.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            elif align == 'justify':
+                self.paragraph.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        if 'margin-left' in style:
+            margin = style['margin-left']
+            units = re.sub(r'[0-9]+', '', margin)
+            margin = int(re.sub(r'[a-z]+', '', margin))
+            if units == 'px':
+                self.paragraph.paragraph_format.left_indent = Inches(min(margin // 10 * INDENT, MAX_INDENT))
+            # TODO handle non px units
+
+    def add_styles_to_run(self, style):
+        if 'color' in style:
+            color = re.sub(r'[a-z()]+', '', style['color'])
+            colors = [int(x) for x in color.split(',')]
+            self.run.font.color.rgb = RGBColor(*colors)
+        if 'background-color' in style:
+            color = color = re.sub(r'[a-z()]+', '', style['background-color'])
+            colors = [int(x) for x in color.split(',')]
+            self.run.font.highlight_color = WD_COLOR.GRAY_25 #TODO: map colors
+
+    def parse_dict_string(self, string, separator=';'):
+        new_string = string.replace(" ", '').split(separator)
+        string_dict = dict([x.split(':') for x in new_string if ':' in x])
+        return string_dict
 
     def handle_starttag(self, tag, attrs):
-        # print("<start tag:", tag)
-        # if attrs:
-        #     print(attrs)
-        self.tags[tag] = dict(attrs)
-        self.stack.append((tag, dict(attrs)))
+        current_attrs = dict(attrs)
+
+        if tag == 'span':
+            self.tags['span'].append(current_attrs)
+            return
+        elif tag == 'ol' or tag == 'ul':
+            self.tags['list'].append(tag)
+            return # don't apply styles for now
+        elif tag == 'br':
+            self.run.add_break()
+            return
+
+        self.tags[tag] = current_attrs
         if tag == 'p':
             self.paragraph = self.doc.add_paragraph()
-            if attrs:
-                d = dict(attrs)
-                if 'style' in d:
-                    style = d['style'].replace(" ", '').split(';')
-                    style = dict([x.split(':') for x in style if ':' in x])
-                    print(style)
-                    if 'text-align' in style:
-                        align = style['text-align']
-                        if align == 'center':
-                            self.paragraph.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                        elif align == 'right':
-                            self.paragraph.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-                        elif align == 'justify':
-                            self.paragraph.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-                    if 'margin-left' in style:
-                        margin = style['margin-left']
-                        margin = int(re.sub(r'[a-z]+', '', margin))
-                        # if margin is in px
-                        self.paragraph.paragraph_format.left_indent = Inches(min(margin // 10 * 0.25, 5.5))
                         
         elif tag == 'li':
-            if 'ol' in self.tags:
-                self.paragraph = self.doc.add_paragraph(style='List Number')
-            elif 'ul' in self.tags:
-                self.paragraph = self.doc.add_paragraph(style='List Bullet')
+            # check list stack to determine style and depth
+            list_depth = len(self.tags['list'])
+            if list_depth:
+                list_type = self.tags['list'][-1]
             else:
-                self.paragraph = self.doc.add_paragraph(style='List Bullet')
+                list_type = 'ul' # assign unordered if no tag
+
+            if list_type == 'ol':
+                list_style = "List Number"
+            else:
+                list_style = 'List Bullet'
+
+            self.paragraph = self.doc.add_paragraph(style=list_style)            
+            self.paragraph.paragraph_format.left_indent = Inches(min(list_depth * LIST_INDENT, MAX_INDENT))
+            self.paragraph.paragraph_format.line_spacing = 1
+            
         elif tag[0] == 'h' and len(tag) == 2:
-            try:
-                h_size = int(tag[1])
-                self.paragraph = self.doc.add_heading(level=h_size)
-            except:
-                import pdb; pdb.set_trace()
+            h_size = int(tag[1])
+            self.paragraph = self.doc.add_heading(level=min(h_size, 9))
+        
+        # add style
+        if 'style' in current_attrs:
+            style = self.parse_dict_string(current_attrs['style'])
+            self.add_styles_to_paragraph(style)
+        
+        # set new run reference point in case of leading line breaks
+        if tag == 'p' or tag == 'li':
+            self.run = self.paragraph.add_run()
 
     def handle_endtag(self, tag):
-        # print("end tag>:", tag)
-        try:
-            if tag in self.tags:
-                self.tags.pop(tag)
-            # check tag is top of stack?
-            if tag == self.stack[-1][0]:
-                self.stack.pop()
-        except:
-            import pdb; pdb.set_trace()
+        if tag == 'span':
+            if self.tags['span']:
+                self.tags['span'].pop()
+        elif tag == 'ol' or tag == 'ul':
+            remove_last_occurence(self.tags['list'], tag)
+        elif tag in self.tags:
+            self.tags.pop(tag)
 
     def handle_data(self, data):
-        # print("DATA:", data)
-        print(self.stack)
-        # check through tags and determine data type and styles to add
-        
-        # check for text type (paragraph, list etc)
-        run = self.paragraph.add_run(data)
-        for item in self.stack:
-            if item[0] not in ['p', 'li']:
-                tag = item[0]
-                if 'style' in item[1]:
-                    style = item[1]['style'].replace(' ', '').split(';')
-                    style = dict([x.split(':') for x in style if ':' in x])
-                    print(style)
-                    if tag == 'span':
-                        if 'color' in style:
-                            color = re.sub(r'[a-z()]+', '', style['color'])
-                            colors = [int(x) for x in color.split(',')]
-                            run.font.color.rgb = RGBColor(*colors)
-                            print(colors, run.font.color.rgb, run)
-                        if 'background-color' in style:
-                            color = color = re.sub(r'[a-z()]+', '', style['background-color'])
-                            colors = [int(x) for x in color.split(',')]
-                            run.font.highlight_color = WD_COLOR.BLUE # some kind of color mapping with thresholds?
-                            # use subset of all colors and find closest with euclidean distance
-                    
-                else: # single element tag like bold/italic
-                    if tag == 'strong':
-                        run.font.bold = True
-                    elif tag == 'em':
-                        run.font.italic = True
-                    elif tag == 'u':
-                        run.font.underline = True
-                    elif tag == 's':
-                        run.font.strike = True
+        if not hasattr(self, 'paragraph'):
+            self.paragraph = self.doc.add_paragraph()
 
-                
+        self.run = self.paragraph.add_run(data)
+        spans = self.tags['span']
+        for span in spans:
+            if 'style' in span:
+                style = self.parse_dict_string(span['style'])
+                self.add_styles_to_run(style)
+        if 'strong' in self.tags or 'b' in self.tags:
+            self.run.font.bold = True
+        if 'em' in self.tags or 'i' in self.tags:
+            self.run.font.italic = True
+        if 'u' in self.tags:
+            self.run.font.underline = True
+        if 's' in self.tags:
+            self.run.font.strike = True
 
-
-    def set_initial_attrs(self):
-        self.tags = {}
-        self.stack = []
-        self.doc = Document()
-        self.last_tag = None
-
-    def run(self, html, filename=None):
-        self.set_initial_attrs()
-        self.feed(html)
-        print(self.stack)
-        if filename:
-            self.doc.save('f1.docx')
+    def set_initial_attrs(self, document=None, bs=True):
+        self.tags = {
+            'span': [],
+            'list': [],
+        }
+        if document:
+            self.doc = document
         else:
-            self.doc.save('%s.docx' % filename)
+            self.doc = Document()
+        self.bs = bs # whether or not to clean with BeautifulSoup
 
+    def run(self, html):
+        if self.bs and BeautifulSoup:
+            html = BeautifulSoup(html, 'html.parser')
+        html = remove_whitespace(str(html))
+        self.feed(html)
 
-parser = MyHTMLParser()
-# parser.feed('<html><head><title style="color: blue">Test</title></head>'
-#             '<body><h1>Parse me!</h1></body></html>')
-parser.set_initial_attrs()
-parser.feed("""<p>My line <span width="10" style="color: rgb(235, 107, 86);">goes he</span>re</p><p><span style="background-color: rgb(251, 160, 38);">Background color</span></p><p><span style="background-color: rgb(71, 85, 119); color: rgb(255, 255, 255);">This sentence has background and&nbsp;</span><span style="background-color: rgb(71, 85, 119);"><span style="color: rgb(247, 218, 100);">text color</span><span style="color: rgb(255, 255, 255);">&nbsp;</span></span><span style="background-color: rgb(71, 85, 119); color: rgb(255, 255, 255);">and<strong> bold </strong><em>italic</em> <u>underlined</u> <s>strike</s> styles</span></p><p>List</p><pre>2 + 3 = 5↵this is code</pre><h1>heading 1</h1><ol><li>A list for reals</li><li>Second item</li></ol><ul style="list-style-type: circle;"><li>Unorderd list</li><li>with circle markers</li></ul><p>Align left Align leftAlign leftAlign leftAlign leftAlign leftAlign leftAlign leftAlign leftAlign left</p><p style="text-align: center;">Align center Align center Align center Align center Align center Align center Align center Align center Align center</p><p style="text-align: right;">Align Right. Align Right. Align Right. Align Right. Align Right. Align Right. Align Right. Align Right.</p><p style="text-align: justify;">This sentence is justified. This sentence is justified. This sentence is justified. This sentence is justified. This sentence is justified.</p><p style="text-align: justify;">Indent 0</p><p style="text-align: justify; margin-left: 20px;">Indent 1</p><p style="text-align: justify; margin-left: 40px;">Indent 2</p><p style="text-align: justify; margin-left: 60px;">Indent 3</p><p style="text-align: justify; margin-left: 80px;">Indent 4</p><p style="text-align: justify; margin-left: 580px;">Indent max?</p><p style="text-align: left;">asdfsa</p><p style="text-align: left;"><a class="fr-green fr-strong" href="https://github.com" rel="noopener noreferrer" target="_blank">link</a></p>""")
-parser.doc.save('t1.docx')
+    def add_html_to_document(self, html, document, bs=True):
+        self.set_initial_attrs(document, bs=bs)
+        self.run(html)
+
+    def parse_html_file(self, filename_html, filename_docx=None, bs=True):
+        with open(filename_html, 'r') as infile:
+            html = infile.read()
+        self.set_initial_attrs(bs=bs)
+        self.run(html)
+        if not filename_docx:
+            filename_docx = 'new_docx_file_%s' % filename_html
+        self.doc.save('%s.docx' % filename_docx)
+
+if __name__=='__main__':
+    
+    arg_parser = argparse.ArgumentParser(description='Convert .html file into .docx file with formatting')
+    arg_parser.add_argument('filename_html', help='The .html file to be parsed')
+    arg_parser.add_argument(
+        'filename_docx', 
+        nargs='?', 
+        help='The name of the .docx file to be saved. Default = new_docx_file_[filename_html]', 
+        default=None
+    )
+    arg_parser.add_argument('--bs', action='store_true', help='Attempt to fix html before parsing. Default = True')
+
+    args = vars(arg_parser.parse_args())
+    file_html = args.pop('filename_html')
+    html_parser = HtmlToDocx()
+    html_parser.parse_html_file(file_html, **args)
