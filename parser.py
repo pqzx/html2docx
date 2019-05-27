@@ -13,7 +13,10 @@ user can pass existing document object as arg
 deal with tables
 ignore 'code'
 """
-import re, sys, argparse
+import re, argparse
+import io, os, shutil
+import urllib.request
+from urllib.parse import urlparse
 from html.parser import HTMLParser
 
 from docx import Document
@@ -28,7 +31,39 @@ except ImportError:
 # values in inches
 INDENT = 0.25
 LIST_INDENT = 0.5
-MAX_INDENT = 5.5
+MAX_INDENT = 5.5 # To stop indents going off the page
+
+def get_filename_from_url(url):
+    return os.path.basename(urlparse(url).path)
+
+def is_url(url):
+    """
+    Not to be used for actually validating a url, but in our use case we only 
+    care if it's a url or a file path, and they're pretty distinguishable
+    """
+    parts = urlparse(url)
+    return all([parts.scheme, parts.netloc, parts.path])
+
+def fetch_image(url, filename=None):
+    """
+    Attempts to get an image from url and save it locally
+
+    :return:
+    """
+    oldfile = get_filename_from_url(url)
+    if filename:
+        extension = oldfile.split('.')[-1]
+        filename = '{filename}.{ext}'.format(filename=filename, ext=extension)
+    else:
+        filename = oldfile
+    with urllib.request.urlopen(url) as response:
+        image = io.BytesIO(response.read())
+    # set and use a directory specifically for this?
+    with open(filename, 'wb') as output_file:
+        image.seek(0)
+        shutil.copyfileobj(image, output_file)
+    
+    return filename
 
 def remove_last_occurence(ls, x):
     ls.pop(len(ls) - ls[::-1].index(x) - 1)
@@ -36,6 +71,17 @@ def remove_last_occurence(ls, x):
 def remove_whitespace(string):
     string = re.sub(r'\s*\n\s*', ' ', string)
     return re.sub(r'>\s{2+}<', '><', string)
+
+fonts = {
+    'b': 'bold',
+    'strong': 'bold',
+    'em': 'italic',
+    'i': 'italic',
+    'u': 'underline',
+    's': 'strike',
+    'sup': 'superscript',
+    'sub': 'subscript',
+}
 
 class HtmlToDocx(HTMLParser):
 
@@ -108,6 +154,32 @@ class HtmlToDocx(HTMLParser):
         elif tag[0] == 'h' and len(tag) == 2:
             h_size = int(tag[1])
             self.paragraph = self.doc.add_heading(level=min(h_size, 9))
+
+        elif tag == 'img':
+            src = current_attrs['src']
+            # fetch image
+            src_is_url = is_url(src)
+            if src_is_url:
+                try:
+                    image = fetch_image(src)
+                except urllib.error.URLError:
+                    image = None
+            else:
+                image = src
+            # add image to doc
+            if image:
+                try:
+                    self.doc.add_picture(image)
+                except FileNotFoundError:
+                    image = None
+            if not image:
+                if src_is_url:
+                    self.doc.add_paragraph("<image %s>" % src)
+                else:
+                    self.doc.add_paragraph("<image %s>" % get_filename_from_url(src))
+            # add styles?
+            # need to cleanup files after document is saved
+            return
         
         # add style
         if 'style' in current_attrs:
@@ -126,6 +198,7 @@ class HtmlToDocx(HTMLParser):
             remove_last_occurence(self.tags['list'], tag)
         elif tag in self.tags:
             self.tags.pop(tag)
+        # maybe set relevant reference to None?
 
     def handle_data(self, data):
         if not hasattr(self, 'paragraph'):
@@ -137,14 +210,12 @@ class HtmlToDocx(HTMLParser):
             if 'style' in span:
                 style = self.parse_dict_string(span['style'])
                 self.add_styles_to_run(style)
-        if 'strong' in self.tags or 'b' in self.tags:
-            self.run.font.bold = True
-        if 'em' in self.tags or 'i' in self.tags:
-            self.run.font.italic = True
-        if 'u' in self.tags:
-            self.run.font.underline = True
-        if 's' in self.tags:
-            self.run.font.strike = True
+        
+        # add font style
+        for tag in self.tags:
+            if tag in fonts:
+                font_style = fonts[tag]
+                setattr(self.run.font, font_style, True)
 
     def set_initial_attrs(self, document=None, bs=True):
         self.tags = {
@@ -183,10 +254,11 @@ if __name__=='__main__':
     arg_parser.add_argument(
         'filename_docx', 
         nargs='?', 
-        help='The name of the .docx file to be saved. Default = new_docx_file_[filename_html]', 
+        help='The name of the .docx file to be saved. Default new_docx_file_[filename_html]', 
         default=None
     )
-    arg_parser.add_argument('--bs', action='store_true', help='Attempt to fix html before parsing. Default = True')
+    arg_parser.add_argument('--bs', action='store_true', 
+        help='Attempt to fix html before parsing. Requires bs4. Default True')
 
     args = vars(arg_parser.parse_args())
     file_html = args.pop('filename_html')
