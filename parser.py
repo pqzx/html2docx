@@ -44,26 +44,18 @@ def is_url(url):
     parts = urlparse(url)
     return all([parts.scheme, parts.netloc, parts.path])
 
-def fetch_image(url, filename=None):
+def fetch_image(url):
     """
-    Attempts to get an image from url and save it locally
+    Attempts to fetch an image from a url. 
+    If successful returns a bytes object, else returns None
 
     :return:
     """
-    oldfile = get_filename_from_url(url)
-    if filename:
-        extension = oldfile.split('.')[-1]
-        filename = '{filename}.{ext}'.format(filename=filename, ext=extension)
-    else:
-        filename = oldfile
-    with urllib.request.urlopen(url) as response:
-        image = io.BytesIO(response.read())
-    # set and use a directory specifically for this?
-    with open(filename, 'wb') as output_file:
-        image.seek(0)
-        shutil.copyfileobj(image, output_file)
-    
-    return filename
+    try:
+        with urllib.request.urlopen(url) as response:
+            return io.BytesIO(response.read())
+    except urllib.error.URLError:
+        return None
 
 def remove_last_occurence(ls, x):
     ls.pop(len(ls) - ls[::-1].index(x) - 1)
