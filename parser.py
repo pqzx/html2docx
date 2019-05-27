@@ -174,9 +174,10 @@ class HtmlToDocx(HTMLParser):
                     image = None
             if not image:
                 if src_is_url:
-                    self.doc.add_paragraph("<image %s>" % src)
+                    self.doc.add_paragraph("<image: %s>" % src)
                 else:
-                    self.doc.add_paragraph("<image %s>" % get_filename_from_url(src))
+                    # avoid exposing filepaths in document
+                    self.doc.add_paragraph("<image: %s>" % get_filename_from_url(src))
             # add styles?
             # need to cleanup files after document is saved
             return
@@ -196,6 +197,10 @@ class HtmlToDocx(HTMLParser):
                 self.tags['span'].pop()
         elif tag == 'ol' or tag == 'ul':
             remove_last_occurence(self.tags['list'], tag)
+        elif tag == 'a':
+            link = self.tags.pop(tag)
+            href = link['href']
+            self.paragraph.add_run('<link: %s>' % href)
         elif tag in self.tags:
             self.tags.pop(tag)
         # maybe set relevant reference to None?
