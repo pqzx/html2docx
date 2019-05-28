@@ -7,6 +7,7 @@ Usage: Add strings of html to an existing docx.Document object
 
 ```from parser import HtmlToDocx
 from docx import Document
+from parser import HtmlToDocx
 
 document = Document()
 new_parser = HtmlToDocx()
