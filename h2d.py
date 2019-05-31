@@ -19,6 +19,7 @@ import urllib.request
 from urllib.parse import urlparse
 from html.parser import HTMLParser
 
+import docx
 from docx import Document
 from docx.shared import RGBColor, Pt, Inches
 from docx.enum.text import WD_COLOR, WD_ALIGN_PARAGRAPH
@@ -144,8 +145,11 @@ class HtmlToDocx(HTMLParser):
             self.paragraph.paragraph_format.line_spacing = 1
             
         elif tag[0] == 'h' and len(tag) == 2:
-            h_size = int(tag[1])
-            self.paragraph = self.doc.add_heading(level=min(h_size, 9))
+            if isinstance(self.doc, docx.document.Document):
+                h_size = int(tag[1])
+                self.paragraph = self.doc.add_heading(level=min(h_size, 9))
+            else:
+                self.paragraph = self.doc.add_paragraph()
 
         elif tag == 'img':
             src = current_attrs['src']
@@ -171,7 +175,6 @@ class HtmlToDocx(HTMLParser):
                     # avoid exposing filepaths in document
                     self.doc.add_paragraph("<image: %s>" % get_filename_from_url(src))
             # add styles?
-            # need to cleanup files after document is saved
             return
         
         # add style
@@ -198,7 +201,7 @@ class HtmlToDocx(HTMLParser):
         # maybe set relevant reference to None?
 
     def handle_data(self, data):
-        if not hasattr(self, 'paragraph'):
+        if not self.paragraph:
             self.paragraph = self.doc.add_paragraph()
 
         self.run = self.paragraph.add_run(data)
@@ -224,8 +227,9 @@ class HtmlToDocx(HTMLParser):
         else:
             self.doc = Document()
         self.bs = bs # whether or not to clean with BeautifulSoup
+        self.paragraph = None
 
-    def run(self, html):
+    def run_process(self, html):
         if self.bs and BeautifulSoup:
             html = BeautifulSoup(html, 'html.parser')
         html = remove_whitespace(str(html))
@@ -233,13 +237,13 @@ class HtmlToDocx(HTMLParser):
 
     def add_html_to_document(self, html, document, bs=True):
         self.set_initial_attrs(document, bs=bs)
-        self.run(html)
+        self.run_process(html)
 
     def parse_html_file(self, filename_html, filename_docx=None, bs=True):
         with open(filename_html, 'r') as infile:
             html = infile.read()
         self.set_initial_attrs(bs=bs)
-        self.run(html)
+        self.run_process(html)
         if not filename_docx:
             filename_docx = 'new_docx_file_%s' % filename_html
         self.doc.save('%s.docx' % filename_docx)
