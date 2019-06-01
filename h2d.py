@@ -10,8 +10,7 @@ can nest calls to something like 'convert_chunk' in loops
 user can pass existing document object as arg 
 (if they want to manage rest of document themselves)
 
-deal with tables
-ignore 'code'
+How to deal with block level style applied over table elements? e.g. text align
 """
 import re, argparse
 import io, os, shutil
@@ -74,6 +73,7 @@ fonts = {
     's': 'strike',
     'sup': 'superscript',
     'sub': 'subscript',
+    'th': 'bold',
 }
 
 class HtmlToDocx(HTMLParser):
@@ -177,6 +177,23 @@ class HtmlToDocx(HTMLParser):
             # add styles?
             return
         
+        elif tag == 'table':
+            # create table with dimensions at current element in self.tables
+            rows, cols = self.tables[self.table_no]
+            self.table = self.doc.add_table(rows, cols)
+            self.table.style = 'Table Grid'
+            self.cell_position = [0, 0]
+            self.table_styles = current_attrs
+
+        elif tag == 'tr':
+            self.row_styles = current_attrs
+
+        elif tag == 'td' or tag == 'th':
+            # point doc to table cell
+            self.doc = self.table.cell(*self.cell_position)
+            self.paragraph = self.doc.paragraphs[0]
+            self.cell_styles = current_attrs
+
         # add style
         if 'style' in current_attrs:
             style = self.parse_dict_string(current_attrs['style'])
@@ -196,6 +213,25 @@ class HtmlToDocx(HTMLParser):
             link = self.tags.pop(tag)
             href = link['href']
             self.paragraph.add_run('<link: %s>' % href)
+        elif tag == 'table':
+            self.table_no += 1
+            self.tags.pop(tag)
+            self.table = None
+            self.doc = self.document
+            self.paragraph = None
+            # apply table style across all children
+            # actually should probably collate all the styles and apply them in one go
+            # at this point, since child styles should override parent styles
+            # but here we would do the reverse
+        elif tag == 'tr':
+            self.tags.pop(tag)
+            self.cell_position[0] += 1
+            self.cell_position[1] = 0
+            # apply row style across all children
+        elif tag == 'td' or tag == 'th':
+            self.tags.pop(tag)
+            self.cell_position[1] += 1
+            # apply cell style across all children
         elif tag in self.tags:
             self.tags.pop(tag)
         # maybe set relevant reference to None?
@@ -228,11 +264,27 @@ class HtmlToDocx(HTMLParser):
             self.doc = Document()
         self.bs = bs # whether or not to clean with BeautifulSoup
         self.paragraph = None
+        self.document = self.doc
+ 
+    def get_tables(self):
+        if not hasattr(self, 'soup'):
+            return
+            # find other way to do it, or require this dependency?
+        tables = self.soup.find_all(['table'])
+        self.tables = []
+        # get structure of each table
+        for table in tables:
+            rows = table.find_all(['tr'])
+            cols = rows[0].find_all(['th', 'td'])
+            self.tables.append((len(rows), len(cols)))
+        
+        self.table_no = 0
 
     def run_process(self, html):
         if self.bs and BeautifulSoup:
-            html = BeautifulSoup(html, 'html.parser')
-        html = remove_whitespace(str(html))
+            self.soup = BeautifulSoup(html, 'html.parser')
+        self.get_tables()
+        html = remove_whitespace(str(self.soup))
         self.feed(html)
 
     def add_html_to_document(self, html, document, bs=True):
