@@ -13,12 +13,12 @@ user can pass existing document object as arg
 How to deal with block level style applied over table elements? e.g. text align
 """
 import re, argparse
-import io, os, shutil
+import io, os
 import urllib.request
 from urllib.parse import urlparse
 from html.parser import HTMLParser
 
-import docx
+import docx, docx.table
 from docx import Document
 from docx.shared import RGBColor, Pt, Inches
 from docx.enum.text import WD_COLOR, WD_ALIGN_PARAGRAPH
@@ -53,6 +53,7 @@ def fetch_image(url):
     """
     try:
         with urllib.request.urlopen(url) as response:
+            # security flaw?
             return io.BytesIO(response.read())
     except urllib.error.URLError:
         return None
@@ -77,6 +78,41 @@ fonts = {
 }
 
 class HtmlToDocx(HTMLParser):
+
+    def __init__(self):
+        super().__init__()
+        self.options = {
+            'fix-html': True,
+            'images': True,
+            'tables': True,
+            'styles': True,
+        }
+
+    def set_initial_attrs(self, document=None):
+        self.tags = {
+            'span': [],
+            'list': [],
+        }
+        if document:
+            self.doc = document
+        else:
+            self.doc = Document()
+        self.bs = self.options['fix-html'] # whether or not to clean with BeautifulSoup
+        self.document = self.doc
+        self.include_tables = self.options['tables']
+        self.include_images = self.options['images']
+        self.include_styles = self.options['styles']
+        self.paragraph = None
+        self.skip = False
+        self.skip_tag = None
+
+    def skip_tables_hack(self):
+        # temporary hack to deal with nested tables in skipped tables
+        if not self.include_tables:
+            self.skip = True
+            self.skip_tag = 'table'
+            return True
+        return False
 
     def add_styles_to_paragraph(self, style):
         if 'text-align' in style:
@@ -111,6 +147,8 @@ class HtmlToDocx(HTMLParser):
         return string_dict
 
     def handle_starttag(self, tag, attrs):
+        if self.skip:
+            return
         current_attrs = dict(attrs)
 
         if tag == 'span':
@@ -152,6 +190,13 @@ class HtmlToDocx(HTMLParser):
                 self.paragraph = self.doc.add_paragraph()
 
         elif tag == 'img':
+            if not self.include_images:
+                self.skip = True
+                self.skip_tag = tag
+                return
+            if not isinstance(self.doc, docx.document.Document):
+                self.doc.add_paragraph('<image: %s>' % current_attrs['src'])
+                return
             src = current_attrs['src']
             # fetch image
             src_is_url = is_url(src)
@@ -178,44 +223,69 @@ class HtmlToDocx(HTMLParser):
             return
         
         elif tag == 'table':
+            # TODO: handle nested tables, but for now, just skip
+            if isinstance(self.doc, docx.table._Cell):
+                self.skip = True
+                self.skip_tag = tag
+                return
+            if not self.include_tables:
+                self.skip = True
+                self.skip_tag = tag
+                return
             # create table with dimensions at current element in self.tables
             rows, cols = self.tables[self.table_no]
             self.table = self.doc.add_table(rows, cols)
             self.table.style = 'Table Grid'
             self.cell_position = [0, 0]
             self.table_styles = current_attrs
+            self.paragraph = None
 
         elif tag == 'tr':
+            if self.skip_tables_hack(): return
             self.row_styles = current_attrs
+            self.paragraph = None
 
         elif tag == 'td' or tag == 'th':
+            if self.skip_tables_hack(): return
             # point doc to table cell
             self.doc = self.table.cell(*self.cell_position)
             self.paragraph = self.doc.paragraphs[0]
             self.cell_styles = current_attrs
-
-        # add style
-        if 'style' in current_attrs:
-            style = self.parse_dict_string(current_attrs['style'])
-            self.add_styles_to_paragraph(style)
         
         # set new run reference point in case of leading line breaks
         if tag == 'p' or tag == 'li':
             self.run = self.paragraph.add_run()
+        
+        # add style
+        if not self.include_styles:
+            return
+        if 'style' in current_attrs and self.paragraph:
+            style = self.parse_dict_string(current_attrs['style'])
+            self.add_styles_to_paragraph(style)
 
     def handle_endtag(self, tag):
+        if self.skip:
+            if tag == self.skip_tag:
+                self.skip = False
+                self.skip_tag = None
+                self.paragraph = None
+            return
+            
         if tag == 'span':
             if self.tags['span']:
                 self.tags['span'].pop()
+                return
         elif tag == 'ol' or tag == 'ul':
             remove_last_occurence(self.tags['list'], tag)
+            return
         elif tag == 'a':
             link = self.tags.pop(tag)
             href = link['href']
             self.paragraph.add_run('<link: %s>' % href)
+            return
         elif tag == 'table':
+            if self.skip_tables_hack(): return
             self.table_no += 1
-            self.tags.pop(tag)
             self.table = None
             self.doc = self.document
             self.paragraph = None
@@ -224,19 +294,23 @@ class HtmlToDocx(HTMLParser):
             # at this point, since child styles should override parent styles
             # but here we would do the reverse
         elif tag == 'tr':
-            self.tags.pop(tag)
+            if self.skip_tables_hack(): return
             self.cell_position[0] += 1
             self.cell_position[1] = 0
             # apply row style across all children
         elif tag == 'td' or tag == 'th':
-            self.tags.pop(tag)
+            if self.skip_tables_hack(): return
             self.cell_position[1] += 1
             # apply cell style across all children
-        elif tag in self.tags:
+
+        if tag in self.tags:
             self.tags.pop(tag)
         # maybe set relevant reference to None?
 
     def handle_data(self, data):
+        if self.skip:
+            return
+
         if not self.paragraph:
             self.paragraph = self.doc.add_paragraph()
 
@@ -252,27 +326,15 @@ class HtmlToDocx(HTMLParser):
             if tag in fonts:
                 font_style = fonts[tag]
                 setattr(self.run.font, font_style, True)
-
-    def set_initial_attrs(self, document=None, bs=True):
-        self.tags = {
-            'span': [],
-            'list': [],
-        }
-        if document:
-            self.doc = document
-        else:
-            self.doc = Document()
-        self.bs = bs # whether or not to clean with BeautifulSoup
-        self.paragraph = None
-        self.document = self.doc
  
     def get_tables(self):
         if not hasattr(self, 'soup'):
+            self.tables = False
             return
             # find other way to do it, or require this dependency?
         tables = self.soup.find_all(['table'])
         self.tables = []
-        # get structure of each table
+        # get structure of each table. FIXME nested tables also get picked up
         for table in tables:
             rows = table.find_all(['tr'])
             cols = rows[0].find_all(['th', 'td'])
@@ -283,18 +345,19 @@ class HtmlToDocx(HTMLParser):
     def run_process(self, html):
         if self.bs and BeautifulSoup:
             self.soup = BeautifulSoup(html, 'html.parser')
-        self.get_tables()
+        if self.include_tables:
+            self.get_tables()
         html = remove_whitespace(str(self.soup))
         self.feed(html)
 
-    def add_html_to_document(self, html, document, bs=True):
-        self.set_initial_attrs(document, bs=bs)
+    def add_html_to_document(self, html, document):
+        self.set_initial_attrs(document)
         self.run_process(html)
 
-    def parse_html_file(self, filename_html, filename_docx=None, bs=True):
+    def parse_html_file(self, filename_html, filename_docx=None):
         with open(filename_html, 'r') as infile:
             html = infile.read()
-        self.set_initial_attrs(bs=bs)
+        self.set_initial_attrs()
         self.run_process(html)
         if not filename_docx:
             filename_docx = 'new_docx_file_%s' % filename_html
