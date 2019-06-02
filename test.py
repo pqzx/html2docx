@@ -59,5 +59,20 @@ class OutputTest(unittest.TestCase):
         self.parser.options['tables'] = False
         self.parser.add_html_to_document(self.table_html, self.document)
 
+    def test_wrong_argument_type_raises_error(self):
+        try:
+            self.parser.add_html_to_document(self.document, self.text1)
+        except Exception as e:
+            assert isinstance(e, ValueError)
+            assert "First argument needs to be a <class 'str'>" in str(e)
+
+        try:
+            self.parser.add_html_to_document(self.text1, self.text1)
+        except Exception as e:
+            assert isinstance(e, ValueError)
+            assert "Second argument" in str(e)
+            assert "<class 'docx.document.Document'>" in str(e)
+
+
 if __name__ == '__main__':
     unittest.main()

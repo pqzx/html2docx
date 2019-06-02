@@ -353,6 +353,10 @@ class HtmlToDocx(HTMLParser):
         self.feed(html)
 
     def add_html_to_document(self, html, document):
+        if not isinstance(html, str):
+            raise ValueError('First argument needs to be a %s' % str)
+        elif not isinstance(document, docx.document.Document) and not isinstance(document, docx.table._Cell):
+            raise ValueError('Second argument needs to be a %s' % docx.document.Document)
         self.set_initial_attrs(document)
         self.run_process(html)
 
