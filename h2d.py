@@ -329,7 +329,7 @@ class HtmlToDocx(HTMLParser):
  
     def get_tables(self):
         if not hasattr(self, 'soup'):
-            self.tables = False
+            self.include_tables = False
             return
             # find other way to do it, or require this dependency?
         tables = self.soup.find_all(['table'])
@@ -345,9 +345,11 @@ class HtmlToDocx(HTMLParser):
     def run_process(self, html):
         if self.bs and BeautifulSoup:
             self.soup = BeautifulSoup(html, 'html.parser')
+            html = remove_whitespace(str(self.soup))
+        else:
+            html = remove_whitespace(html)
         if self.include_tables:
             self.get_tables()
-        html = remove_whitespace(str(self.soup))
         self.feed(html)
 
     def add_html_to_document(self, html, document):
