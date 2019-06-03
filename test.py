@@ -73,6 +73,19 @@ class OutputTest(unittest.TestCase):
             assert "Second argument" in str(e)
             assert "<class 'docx.document.Document'>" in str(e)
 
+    def test_add_html_to_cells_method(self):
+        self.document.add_heading(
+            'Test: add_html_to_cells method',
+            level=1
+        )
+        table = self.document.add_table(2,2, style='Table Grid')
+        cell = table.cell(0,0)
+        html = '''Line 0 without p tags<p>Line 1 with P tags</p>'''
+        self.parser.add_html_to_cell(html, cell)
+
+        cell = table.cell(0,1)
+        html = '''<p>Line 0 with p tags</p>Line 1 without p tags'''
+        self.parser.add_html_to_cell(html, cell)
 
 if __name__ == '__main__':
     unittest.main()

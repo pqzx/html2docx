@@ -65,6 +65,12 @@ def remove_whitespace(string):
     string = re.sub(r'\s*\n\s*', ' ', string)
     return re.sub(r'>\s{2+}<', '><', string)
 
+def delete_paragraph(paragraph):
+    # https://github.com/python-openxml/python-docx/issues/33#issuecomment-77661907
+    p = paragraph._element
+    p.getparent().remove(p)
+    p._p = p._element = None
+
 fonts = {
     'b': 'bold',
     'strong': 'bold',
@@ -359,6 +365,14 @@ class HtmlToDocx(HTMLParser):
             raise ValueError('Second argument needs to be a %s' % docx.document.Document)
         self.set_initial_attrs(document)
         self.run_process(html)
+
+    def add_html_to_cell(self, html, cell):
+        if not isinstance(cell, docx.table._Cell):
+            raise ValueError('Second argument needs to be a %s' % docx.table._Cell)
+        unwanted_paragraph = cell.paragraphs[0]
+        delete_paragraph(unwanted_paragraph)
+        self.set_initial_attrs(cell)
+        self.run_process(html)        
 
     def parse_html_file(self, filename_html, filename_docx=None):
         with open(filename_html, 'r') as infile:
