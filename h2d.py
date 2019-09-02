@@ -23,10 +23,7 @@ from docx import Document
 from docx.shared import RGBColor, Pt, Inches
 from docx.enum.text import WD_COLOR, WD_ALIGN_PARAGRAPH
 
-try:
-    from bs4 import BeautifulSoup
-except ImportError:
-    BeautifulSoup = None
+from bs4 import BeautifulSoup
 
 # values in inches
 INDENT = 0.25
@@ -386,7 +383,11 @@ class HtmlToDocx(HTMLParser):
         unwanted_paragraph = cell.paragraphs[0]
         delete_paragraph(unwanted_paragraph)
         self.set_initial_attrs(cell)
-        self.run_process(html)        
+        self.run_process(html)
+        # cells must end with a paragraph or will get message about corrupt file
+        # https://stackoverflow.com/a/29287121
+        if not self.doc.paragraphs:
+            self.doc.add_paragraph('')  
 
     def parse_html_file(self, filename_html, filename_docx=None):
         with open(filename_html, 'r') as infile:
