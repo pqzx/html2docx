@@ -105,20 +105,19 @@ class HtmlToDocx(HTMLParser):
             self.doc = Document()
         self.bs = self.options['fix-html'] # whether or not to clean with BeautifulSoup
         self.document = self.doc
-        self.include_tables = self.options['tables']
+        self.include_tables = True #TODO add this option back in?
         self.include_images = self.options['images']
         self.include_styles = self.options['styles']
         self.paragraph = None
         self.skip = False
         self.skip_tag = None
+        self.instances_to_skip = 0
 
-    def skip_tables_hack(self):
-        # temporary hack to deal with nested tables in skipped tables
-        if not self.include_tables:
-            self.skip = True
-            self.skip_tag = 'table'
-            return True
-        return False
+    def get_cell_html(self, soup):
+        # Returns string of td element with opening and closing <td> tags removed
+        if soup.find_all():
+            return '\n'.join(str(soup).split('\n')[1:-1])
+        return str(soup)[4:-5]
 
     def add_styles_to_paragraph(self, style):
         if 'text-align' in style:
@@ -155,6 +154,14 @@ class HtmlToDocx(HTMLParser):
     def handle_starttag(self, tag, attrs):
         if self.skip:
             return
+        if tag == 'head':
+            self.skip = True
+            self.skip_tag = tag
+            self.instances_to_skip = 0
+            return
+        elif tag == 'body':
+            return
+
         current_attrs = dict(attrs)
 
         if tag == 'span':
@@ -229,34 +236,34 @@ class HtmlToDocx(HTMLParser):
             return
         
         elif tag == 'table':
-            # TODO: handle nested tables, but for now, just skip
-            if isinstance(self.doc, docx.table._Cell):
-                self.skip = True
-                self.skip_tag = tag
-                return
-            if not self.include_tables:
-                self.skip = True
-                self.skip_tag = tag
-                return
-            # create table with dimensions at current element in self.tables
-            rows, cols = self.tables[self.table_no]
+            """
+            To handle nested tables, we will parse tables manually as follows:
+            Get table soup
+            Create docx table
+            Iterate over soup and fill docx table with new instances of this parser
+            Tell HTMLParser to ignore any tags until the corresponding closing table tag
+            """
+            table_soup = self.tables[self.table_no]
+            rows, cols = self.get_table_dimensions(table_soup)
             self.table = self.doc.add_table(rows, cols)
-            self.table.style = 'Table Grid'
-            self.cell_position = [0, 0]
-            self.table_styles = current_attrs
-            self.paragraph = None
-
-        elif tag == 'tr':
-            if self.skip_tables_hack(): return
-            self.row_styles = current_attrs
-            self.paragraph = None
-
-        elif tag == 'td' or tag == 'th':
-            if self.skip_tables_hack(): return
-            # point doc to table cell
-            self.doc = self.table.cell(*self.cell_position)
-            self.paragraph = self.doc.paragraphs[0]
-            self.cell_styles = current_attrs
+            rows = table_soup.find_all('tr', recursive=False)
+            cell_row = 0
+            for row in rows:
+                cols = row.find_all(['th', 'td'], recursive=False)
+                cell_col = 0
+                for col in cols:
+                    cell_html = self.get_cell_html(col)
+                    docx_cell = self.table.cell(cell_row, cell_col)
+                    child_parser = HtmlToDocx()
+                    child_parser.add_html_to_cell(cell_html, docx_cell)
+                    cell_col += 1
+                cell_row += 1
+            
+            # skip all tags until corresponding closing tag
+            self.instances_to_skip = len(table_soup.find_all('table'))
+            self.skip_tag = tag
+            self.skip = True
+            return
         
         # set new run reference point in case of leading line breaks
         if tag == 'p' or tag == 'li':
@@ -271,11 +278,16 @@ class HtmlToDocx(HTMLParser):
 
     def handle_endtag(self, tag):
         if self.skip:
-            if tag == self.skip_tag:
-                self.skip = False
-                self.skip_tag = None
-                self.paragraph = None
-            return
+            if not tag == self.skip_tag:
+                return
+            
+            if self.instances_to_skip > 0:
+                self.instances_to_skip -= 1
+                return
+
+            self.skip = False
+            self.skip_tag = None
+            self.paragraph = None
             
         if tag == 'span':
             if self.tags['span']:
@@ -290,24 +302,10 @@ class HtmlToDocx(HTMLParser):
             self.paragraph.add_run('<link: %s>' % href)
             return
         elif tag == 'table':
-            if self.skip_tables_hack(): return
             self.table_no += 1
             self.table = None
             self.doc = self.document
             self.paragraph = None
-            # apply table style across all children
-            # actually should probably collate all the styles and apply them in one go
-            # at this point, since child styles should override parent styles
-            # but here we would do the reverse
-        elif tag == 'tr':
-            if self.skip_tables_hack(): return
-            self.cell_position[0] += 1
-            self.cell_position[1] = 0
-            # apply row style across all children
-        elif tag == 'td' or tag == 'th':
-            if self.skip_tables_hack(): return
-            self.cell_position[1] += 1
-            # apply cell style across all children
 
         if tag in self.tags:
             self.tags.pop(tag)
@@ -332,20 +330,36 @@ class HtmlToDocx(HTMLParser):
             if tag in fonts:
                 font_style = fonts[tag]
                 setattr(self.run.font, font_style, True)
- 
+
+    def ignore_nested_tables(self, tables_soup):
+        """
+        Returns array containing only the highest level tables
+        Operates on the assumption that bs4 returns child elements immediately after
+        the parent element in `find_all`. If this changes in the future, this method will need to be updated
+
+        :return:
+        """
+        new_tables = []
+        nest = 0
+        for table in tables_soup:
+            if nest:
+                nest -= 1
+                continue
+            new_tables.append(table)
+            nest = len(table.find_all('table'))
+        return new_tables
+    
+    def get_table_dimensions(self, table_soup):
+        rows = table_soup.find_all('tr', recursive=False)
+        cols = rows[0].find_all(['th', 'td'], recursive=False)
+        return len(rows), len(cols)
+
     def get_tables(self):
         if not hasattr(self, 'soup'):
             self.include_tables = False
             return
             # find other way to do it, or require this dependency?
-        tables = self.soup.find_all(['table'])
-        self.tables = []
-        # get structure of each table. FIXME nested tables also get picked up
-        for table in tables:
-            rows = table.find_all(['tr'])
-            cols = rows[0].find_all(['th', 'td'])
-            self.tables.append((len(rows), len(cols)))
-        
+        self.tables = self.ignore_nested_tables(self.soup.find_all('table'))  
         self.table_no = 0
 
     def run_process(self, html):

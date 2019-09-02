@@ -52,6 +52,7 @@ class OutputTest(unittest.TestCase):
         self.parser.add_html_to_document(self.table_html, self.document)
 
     def test_add_html_skip_tables(self):
+        # broken until feature readded
         self.document.add_heading(
             'Test: add html with tables, but skip adding tables',
             level=1
