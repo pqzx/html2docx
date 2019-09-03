@@ -148,6 +148,93 @@ class HtmlToDocx(HTMLParser):
         string_dict = dict([x.split(':') for x in new_string if ':' in x])
         return string_dict
 
+    def handle_li(self):
+        # check list stack to determine style and depth
+        list_depth = len(self.tags['list'])
+        if list_depth:
+            list_type = self.tags['list'][-1]
+        else:
+            list_type = 'ul' # assign unordered if no tag
+
+        if list_type == 'ol':
+            list_style = "List Number"
+        else:
+            list_style = 'List Bullet'
+
+        self.paragraph = self.doc.add_paragraph(style=list_style)            
+        self.paragraph.paragraph_format.left_indent = Inches(min(list_depth * LIST_INDENT, MAX_INDENT))
+        self.paragraph.paragraph_format.line_spacing = 1
+
+    def add_image_to_cell(self, cell, image):
+        # python-docx doesn't have method yet for adding images to table cells. For now we use this
+        paragraph = cell.add_paragraph()
+        run = paragraph.add_run()
+        run.add_picture(image)
+
+    def handle_img(self, current_attrs):
+        if not self.include_images:
+            self.skip = True
+            self.skip_tag = 'img'
+            return
+        src = current_attrs['src']
+        # fetch image
+        src_is_url = is_url(src)
+        if src_is_url:
+            try:
+                image = fetch_image(src)
+            except urllib.error.URLError:
+                image = None
+        else:
+            image = src
+        # add image to doc
+        if image:
+            try:
+                if isinstance(self.doc, docx.document.Document):
+                    self.doc.add_picture(image)
+                else:
+                    self.add_image_to_cell(self.doc, image)
+            except FileNotFoundError:
+                image = None
+        if not image:
+            if src_is_url:
+                self.doc.add_paragraph("<image: %s>" % src)
+            else:
+                # avoid exposing filepaths in document
+                self.doc.add_paragraph("<image: %s>" % get_filename_from_url(src))
+        # add styles?
+
+    def handle_table(self):
+        """
+        To handle nested tables, we will parse tables manually as follows:
+        Get table soup
+        Create docx table
+        Iterate over soup and fill docx table with new instances of this parser
+        Tell HTMLParser to ignore any tags until the corresponding closing table tag
+        """
+        table_soup = self.tables[self.table_no]
+        rows, cols = self.get_table_dimensions(table_soup)
+        self.table = self.doc.add_table(rows, cols)
+        rows = table_soup.find_all('tr', recursive=False)
+        cell_row = 0
+        for row in rows:
+            cols = row.find_all(['th', 'td'], recursive=False)
+            cell_col = 0
+            for col in cols:
+                cell_html = self.get_cell_html(col)
+                if col.name == 'th':
+                    cell_html = "<b>%s</b>" % cell_html
+                docx_cell = self.table.cell(cell_row, cell_col)
+                child_parser = HtmlToDocx()
+                child_parser.add_html_to_cell(cell_html, docx_cell)
+                cell_col += 1
+            cell_row += 1
+        
+        # skip all tags until corresponding closing tag
+        self.instances_to_skip = len(table_soup.find_all('table'))
+        self.skip_tag = 'table'
+        self.skip = True
+        self.table = None
+
     def handle_starttag(self, tag, attrs):
         if self.skip:
             return
@@ -176,21 +263,7 @@ class HtmlToDocx(HTMLParser):
             self.paragraph = self.doc.add_paragraph()
                         
         elif tag == 'li':
-            # check list stack to determine style and depth
-            list_depth = len(self.tags['list'])
-            if list_depth:
-                list_type = self.tags['list'][-1]
-            else:
-                list_type = 'ul' # assign unordered if no tag
-
-            if list_type == 'ol':
-                list_style = "List Number"
-            else:
-                list_style = 'List Bullet'
-
-            self.paragraph = self.doc.add_paragraph(style=list_style)            
-            self.paragraph.paragraph_format.left_indent = Inches(min(list_depth * LIST_INDENT, MAX_INDENT))
-            self.paragraph.paragraph_format.line_spacing = 1
+            self.handle_li()
             
         elif tag[0] == 'h' and len(tag) == 2:
             if isinstance(self.doc, docx.document.Document):
@@ -200,66 +273,11 @@ class HtmlToDocx(HTMLParser):
                 self.paragraph = self.doc.add_paragraph()
 
         elif tag == 'img':
-            if not self.include_images:
-                self.skip = True
-                self.skip_tag = tag
-                return
-            if not isinstance(self.doc, docx.document.Document):
-                self.doc.add_paragraph('<image: %s>' % current_attrs['src'])
-                return
-            src = current_attrs['src']
-            # fetch image
-            src_is_url = is_url(src)
-            if src_is_url:
-                try:
-                    image = fetch_image(src)
-                except urllib.error.URLError:
-                    image = None
-            else:
-                image = src
-            # add image to doc
-            if image:
-                try:
-                    self.doc.add_picture(image)
-                except FileNotFoundError:
-                    image = None
-            if not image:
-                if src_is_url:
-                    self.doc.add_paragraph("<image: %s>" % src)
-                else:
-                    # avoid exposing filepaths in document
-                    self.doc.add_paragraph("<image: %s>" % get_filename_from_url(src))
-            # add styles?
+            self.handle_img(current_attrs)
             return
         
         elif tag == 'table':
-            """
-            To handle nested tables, we will parse tables manually as follows:
-            Get table soup
-            Create docx table
-            Iterate over soup and fill docx table with new instances of this parser
-            Tell HTMLParser to ignore any tags until the corresponding closing table tag
-            """
-            table_soup = self.tables[self.table_no]
-            rows, cols = self.get_table_dimensions(table_soup)
-            self.table = self.doc.add_table(rows, cols)
-            rows = table_soup.find_all('tr', recursive=False)
-            cell_row = 0
-            for row in rows:
-                cols = row.find_all(['th', 'td'], recursive=False)
-                cell_col = 0
-                for col in cols:
-                    cell_html = self.get_cell_html(col)
-                    docx_cell = self.table.cell(cell_row, cell_col)
-                    child_parser = HtmlToDocx()
-                    child_parser.add_html_to_cell(cell_html, docx_cell)
-                    cell_col += 1
-                cell_row += 1
-            
-            # skip all tags until corresponding closing tag
-            self.instances_to_skip = len(table_soup.find_all('table'))
-            self.skip_tag = tag
-            self.skip = True
+            self.handle_table()
             return
         
         # set new run reference point in case of leading line breaks
