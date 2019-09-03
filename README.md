@@ -1,13 +1,19 @@
-# h2d
-Converts html to docx
+# htmldocx
+Convert html to docx
 
-Dependencies: `python-docx` & `bs4` (optional, if you want to fix html before converting)
+Dependencies: `python-docx` & `bs4`
 
-Usage: Add strings of html to an existing docx.Document object
+### To install
 
-```from parser import HtmlToDocx
+`pip install htmldocx`
+
+### Usage
+
+Add strings of html to an existing docx.Document object
+
+```
 from docx import Document
-from parser import HtmlToDocx
+from htmldocx import HtmlToDocx
 
 document = Document()
 new_parser = HtmlToDocx()
@@ -20,6 +26,11 @@ new_parser.add_html_to_document(html, document)
 document.save('your_file_name')
 ```
 
-Also can use from command line to convert files.
+Convert files directly
 
-`python parse.py html-file [docx-savefile-name]`
+```
+from htmldocx import HtmlToDocx
+
+new_parser = HtmlToDocx()
+new_parser.parse_html_file(input-html-file, output-docx-file)
+```
