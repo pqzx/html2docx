@@ -1,21 +1,24 @@
+import os
 import unittest
 from docx import Document
-from h2d import HtmlToDocx
+from .context import HtmlToDocx, test_dir
 
 class OutputTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
         cls.document = Document()
-        # cls.parser = HtmlToDocx()
-        with open('text1.html', 'r') as tb:
+        textpath = os.path.join(test_dir, 'text1.html')
+        tablepath = os.path.join(test_dir, 'tables1.html')
+        with open(textpath, 'r') as tb:
             cls.text1 = tb.read()
-        with open('table.html', 'r') as tb:
+        with open(tablepath, 'r') as tb:
             cls.table_html = tb.read()
 
     @classmethod
     def tearDownClass(cls):
-        cls.document.save('test.docx')
+        outputpath = os.path.join(test_dir, 'test.docx')
+        cls.document.save(outputpath)
 
     def setUp(self):
         self.parser = HtmlToDocx()

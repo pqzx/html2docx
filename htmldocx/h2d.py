@@ -413,7 +413,8 @@ class HtmlToDocx(HTMLParser):
         self.set_initial_attrs()
         self.run_process(html)
         if not filename_docx:
-            filename_docx = 'new_docx_file_%s' % filename_html
+            path, filename = os.path.split(filename_html)
+            filename_docx = '%s/new_docx_file_%s' % (path, filename)
         self.doc.save('%s.docx' % filename_docx)
 
 if __name__=='__main__':
