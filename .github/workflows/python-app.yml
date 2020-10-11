@@ -39,5 +39,6 @@ jobs:
       uses: actions/upload-artifact@v2.2.0
       with:
         name: test_outputs
-        path: tests/test.docx
-        path: tests/new_docx_file_tables2.html.docx
+        path: |
+          tests/test.docx
+          tests/new_docx_file_tables2.html.docx
