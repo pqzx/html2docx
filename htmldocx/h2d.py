@@ -135,12 +135,21 @@ class HtmlToDocx(HTMLParser):
 
     def add_styles_to_run(self, style):
         if 'color' in style:
-            color = re.sub(r'[a-z()]+', '', style['color'])
-            colors = [int(x) for x in color.split(',')]
+            if 'rgb' in style['color']:
+                color = re.sub(r'[a-z()]+', '', style['color'])
+                colors = [int(x) for x in color.split(',')]
+            else:
+                color = style['color'].lstrip('#')
+                colors = tuple(int(color[i:i+2], 16) for i in (0, 2, 4))
             self.run.font.color.rgb = RGBColor(*colors)
+            
         if 'background-color' in style:
-            color = color = re.sub(r'[a-z()]+', '', style['background-color'])
-            colors = [int(x) for x in color.split(',')]
+            if 'rgb' in style['background-color']:
+                color = color = re.sub(r'[a-z()]+', '', style['background-color'])
+                colors = [int(x) for x in color.split(',')]
+            else:
+                color = style['background-color'].lstrip('#')
+                colors = tuple(int(color[i:i+2], 16) for i in (0, 2, 4))
             self.run.font.highlight_color = WD_COLOR.GRAY_25 #TODO: map colors
 
     def parse_dict_string(self, string, separator=';'):
