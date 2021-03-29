@@ -90,6 +90,12 @@ class HtmlToDocx(HTMLParser):
             'tables': True,
             'styles': True,
         }
+        self.table_row_selectors = [
+            'table > tr',
+            'table > thead > tr',
+            'table > tbody > tr',
+            'table > tfoot > tr'
+        ]
 
     def set_initial_attrs(self, document=None):
         self.tags = {
@@ -112,9 +118,9 @@ class HtmlToDocx(HTMLParser):
 
     def get_cell_html(self, soup):
         # Returns string of td element with opening and closing <td> tags removed
-        if soup.find_all():
-            return '\n'.join(str(soup).split('\n')[1:-1])
-        return str(soup)[4:-5]
+        # Cannot use find_all as it only finds element tags and does not find text which
+        # is not inside an element
+        return ' '.join([str(i) for i in soup.contents])
 
     def add_styles_to_paragraph(self, style):
         if 'text-align' in style:
@@ -223,10 +229,10 @@ class HtmlToDocx(HTMLParser):
         table_soup = self.tables[self.table_no]
         rows, cols = self.get_table_dimensions(table_soup)
         self.table = self.doc.add_table(rows, cols)
-        rows = table_soup.find_all('tr', recursive=False)
+        rows = self.get_table_rows(table_soup)
         cell_row = 0
         for row in rows:
-            cols = row.find_all(['th', 'td'], recursive=False)
+            cols = self.get_table_columns(table_soup, row)
             cell_col = 0
             for col in cols:
                 cell_html = self.get_cell_html(col)
@@ -372,10 +378,21 @@ class HtmlToDocx(HTMLParser):
             new_tables.append(table)
             nest = len(table.find_all('table'))
         return new_tables
-    
+
+    def get_table_rows(self, table_soup):
+        # If there's a header, body, footer or direct child tr tags, add row dimensions from there
+        return table_soup.select(', '.join(self.table_row_selectors), recursive=False)
+
+    def get_table_columns(self, table_soup, row):
+        # Get all columns for the specified row tag.
+        return row.find_all(['th', 'td'], recursive=False) if row else []
+
     def get_table_dimensions(self, table_soup):
-        rows = table_soup.find_all('tr', recursive=False)
-        cols = rows[0].find_all(['th', 'td'], recursive=False)
+        # Get rows for the table
+        rows = self.get_table_rows(table_soup)
+        # Table is either empty or has non-direct children between table and tr tags
+        # Thus the row dimensions and column dimensions are assumed to be 0
+        cols = self.get_table_columns(table_soup, rows[0]) if rows else []
         return len(rows), len(cols)
 
     def get_tables(self):
