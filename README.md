@@ -32,5 +32,14 @@ Convert files directly
 from htmldocx import HtmlToDocx
 
 new_parser = HtmlToDocx()
-new_parser.parse_html_file(input-html-file, output-docx-file)
+new_parser.parse_html_file(input_html_file_path, output_docx_file_path)
+```
+
+Convert files from a string
+
+```
+from htmldocx import HtmlToDocx
+
+new_parser = HtmlToDocx()
+docx = new_parser.parse_html_string(input_html_file_string)
 ```
