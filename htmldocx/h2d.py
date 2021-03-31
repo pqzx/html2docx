@@ -256,7 +256,7 @@ class HtmlToDocx(HTMLParser):
         rel_id = self.paragraph.part.relate_to(
             href,
             docx.opc.constants.RELATIONSHIP_TYPE.HYPERLINK,
-            is_external=is_external
+            is_external=True  # don't support anchor links for this library yet
         )
 
         # Create the w:hyperlink tag and add needed values
