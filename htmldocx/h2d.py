@@ -250,6 +250,33 @@ class HtmlToDocx(HTMLParser):
         self.skip = True
         self.table = None
 
+    def handle_link(self, href, text):
+        # Link requires a relationship
+        is_external = href.startswith('http')
+        rel_id = self.paragraph.part.relate_to(
+            href,
+            docx.opc.constants.RELATIONSHIP_TYPE.HYPERLINK,
+            is_external=is_external
+        )
+
+        # Create the w:hyperlink tag and add needed values
+        hyperlink = docx.oxml.shared.OxmlElement('w:hyperlink')
+        hyperlink.set(docx.oxml.shared.qn('r:id'), rel_id)
+
+
+        # Create sub-run
+        subrun = self.paragraph.add_run()
+        rPr = docx.oxml.shared.OxmlElement('w:rPr')
+        rPr.style = 'Hyperlink'
+        subrun._r.append(rPr)
+        subrun._r.text = text
+
+        # Add subrun to hyperlink
+        hyperlink.append(subrun._r)
+
+        # Add hyperlink to run
+        self.paragraph._p.append(hyperlink)
+
     def handle_starttag(self, tag, attrs):
         if self.skip:
             return
@@ -276,10 +303,10 @@ class HtmlToDocx(HTMLParser):
         self.tags[tag] = current_attrs
         if tag == 'p':
             self.paragraph = self.doc.add_paragraph()
-                        
+
         elif tag == 'li':
             self.handle_li()
-            
+
         elif tag[0] == 'h' and len(tag) == 2:
             if isinstance(self.doc, docx.document.Document):
                 h_size = int(tag[1])
@@ -290,15 +317,15 @@ class HtmlToDocx(HTMLParser):
         elif tag == 'img':
             self.handle_img(current_attrs)
             return
-        
+
         elif tag == 'table':
             self.handle_table()
             return
-        
+
         # set new run reference point in case of leading line breaks
         if tag == 'p' or tag == 'li':
             self.run = self.paragraph.add_run()
-        
+
         # add style
         if not self.include_styles:
             return
@@ -310,7 +337,7 @@ class HtmlToDocx(HTMLParser):
         if self.skip:
             if not tag == self.skip_tag:
                 return
-            
+
             if self.instances_to_skip > 0:
                 self.instances_to_skip -= 1
                 return
@@ -318,18 +345,13 @@ class HtmlToDocx(HTMLParser):
             self.skip = False
             self.skip_tag = None
             self.paragraph = None
-            
+
         if tag == 'span':
             if self.tags['span']:
                 self.tags['span'].pop()
                 return
         elif tag == 'ol' or tag == 'ul':
             remove_last_occurence(self.tags['list'], tag)
-            return
-        elif tag == 'a':
-            link = self.tags.pop(tag)
-            href = link['href']
-            self.paragraph.add_run('<link: %s>' % href)
             return
         elif tag == 'table':
             self.table_no += 1
@@ -348,18 +370,27 @@ class HtmlToDocx(HTMLParser):
         if not self.paragraph:
             self.paragraph = self.doc.add_paragraph()
 
-        self.run = self.paragraph.add_run(data)
-        spans = self.tags['span']
-        for span in spans:
-            if 'style' in span:
-                style = self.parse_dict_string(span['style'])
-                self.add_styles_to_run(style)
-        
-        # add font style
-        for tag in self.tags:
-            if tag in fonts:
-                font_style = fonts[tag]
-                setattr(self.run.font, font_style, True)
+        # There can only be one nested link in a valid html document
+        # You cannot have interactive content in an A tag, this includes links
+        # https://html.spec.whatwg.org/#interactive-content
+        link = self.tags.get('a')
+        if link:
+            self.handle_link(link['href'], data)
+        else:
+            # If there's a link, dont put the data directly in the run
+            self.run = self.paragraph.add_run(data)
+            spans = self.tags['span']
+            for span in spans:
+                if 'style' in span:
+                    style = self.parse_dict_string(span['style'])
+                    self.add_styles_to_run(style)
+
+
+            # add font style
+            for tag in self.tags:
+                if tag in fonts:
+                    font_style = fonts[tag]
+                    setattr(self.run.font, font_style, True)
 
     def ignore_nested_tables(self, tables_soup):
         """
