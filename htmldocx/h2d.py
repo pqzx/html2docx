@@ -425,6 +425,11 @@ class HtmlToDocx(HTMLParser):
             path, filename = os.path.split(filename_html)
             filename_docx = '%s/new_docx_file_%s' % (path, filename)
         self.doc.save('%s.docx' % filename_docx)
+    
+    def parse_html_string(self, html):
+        self.set_initial_attrs()
+        self.run_process(html)
+        return self.doc
 
 if __name__=='__main__':
     
