@@ -232,7 +232,7 @@ class HtmlToDocx(HTMLParser):
         rows = self.get_table_rows(table_soup)
         cell_row = 0
         for row in rows:
-            cols = self.get_table_columns(table_soup, row)
+            cols = self.get_table_columns(row)
             cell_col = 0
             for col in cols:
                 cell_html = self.get_cell_html(col)
@@ -383,7 +383,7 @@ class HtmlToDocx(HTMLParser):
         # If there's a header, body, footer or direct child tr tags, add row dimensions from there
         return table_soup.select(', '.join(self.table_row_selectors), recursive=False)
 
-    def get_table_columns(self, table_soup, row):
+    def get_table_columns(self, row):
         # Get all columns for the specified row tag.
         return row.find_all(['th', 'td'], recursive=False) if row else []
 
@@ -392,7 +392,7 @@ class HtmlToDocx(HTMLParser):
         rows = self.get_table_rows(table_soup)
         # Table is either empty or has non-direct children between table and tr tags
         # Thus the row dimensions and column dimensions are assumed to be 0
-        cols = self.get_table_columns(table_soup, rows[0]) if rows else []
+        cols = self.get_table_columns(rows[0]) if rows else []
         return len(rows), len(cols)
 
     def get_tables(self):
