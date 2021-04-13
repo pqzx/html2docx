@@ -69,6 +69,8 @@ class OutputTest(unittest.TestCase):
         except Exception as e:
             assert isinstance(e, ValueError)
             assert "First argument needs to be a <class 'str'>" in str(e)
+        else:
+            assert False, "Error not raised as expected"
 
         try:
             self.parser.add_html_to_document(self.text1, self.text1)
@@ -76,6 +78,8 @@ class OutputTest(unittest.TestCase):
             assert isinstance(e, ValueError)
             assert "Second argument" in str(e)
             assert "<class 'docx.document.Document'>" in str(e)
+        else:
+            assert False, "Error not raised as expected"
 
     def test_add_html_to_cells_method(self):
         self.document.add_heading(
