@@ -134,7 +134,7 @@ class HtmlToDocx(HTMLParser):
         if 'margin-left' in style:
             margin = style['margin-left']
             units = re.sub(r'[0-9]+', '', margin)
-            margin = int(re.sub(r'[a-z]+', '', margin))
+            margin = int(float(re.sub(r'[a-z]+', '', margin)))
             if units == 'px':
                 self.paragraph.paragraph_format.left_indent = Inches(min(margin // 10 * INDENT, MAX_INDENT))
             # TODO handle non px units
@@ -144,18 +144,26 @@ class HtmlToDocx(HTMLParser):
             if 'rgb' in style['color']:
                 color = re.sub(r'[a-z()]+', '', style['color'])
                 colors = [int(x) for x in color.split(',')]
-            else:
+            elif '#' in style['color']:
                 color = style['color'].lstrip('#')
                 colors = tuple(int(color[i:i+2], 16) for i in (0, 2, 4))
+            else:
+                colors = [0, 0, 0]
+                # TODO map colors to named colors (and extended colors...)
+                # For now set color to black to prevent crashing
             self.run.font.color.rgb = RGBColor(*colors)
             
         if 'background-color' in style:
             if 'rgb' in style['background-color']:
                 color = color = re.sub(r'[a-z()]+', '', style['background-color'])
                 colors = [int(x) for x in color.split(',')]
-            else:
+            elif '#' in style['background-color']:
                 color = style['background-color'].lstrip('#')
                 colors = tuple(int(color[i:i+2], 16) for i in (0, 2, 4))
+            else:
+                colors = [0, 0, 0]
+                # TODO map colors to named colors (and extended colors...)
+                # For now set color to black to prevent crashing
             self.run.font.highlight_color = WD_COLOR.GRAY_25 #TODO: map colors
 
     def parse_dict_string(self, string, separator=';'):
