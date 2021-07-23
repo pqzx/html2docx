@@ -80,6 +80,11 @@ fonts = {
     'th': 'bold',
 }
 
+styles = {
+    'LIST_BULLET': 'List Bullet',
+    'LIST_NUMBER': 'List Number',
+}
+
 class HtmlToDocx(HTMLParser):
 
     def __init__(self):
@@ -180,9 +185,9 @@ class HtmlToDocx(HTMLParser):
             list_type = 'ul' # assign unordered if no tag
 
         if list_type == 'ol':
-            list_style = "List Number"
+            list_style = styles['LIST_NUMBER']
         else:
-            list_style = 'List Bullet'
+            list_style = styles['LIST_BULLET']
 
         self.paragraph = self.doc.add_paragraph(style=list_style)            
         self.paragraph.paragraph_format.left_indent = Inches(min(list_depth * LIST_INDENT, MAX_INDENT))
