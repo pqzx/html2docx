@@ -22,6 +22,8 @@ import docx, docx.table
 from docx import Document
 from docx.shared import RGBColor, Pt, Inches
 from docx.enum.text import WD_COLOR, WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 
 from bs4 import BeautifulSoup
 
@@ -315,7 +317,31 @@ class HtmlToDocx(HTMLParser):
         elif tag == 'li':
             self.handle_li()
 
-        elif tag[0] == 'h' and len(tag) == 2:
+        elif tag == "hr":
+
+            # This implementation was taken from:
+            # https://github.com/python-openxml/python-docx/issues/105#issuecomment-62806373
+
+            self.paragraph = self.doc.add_paragraph()
+            pPr = self.paragraph._p.get_or_add_pPr()
+            pBdr = OxmlElement('w:pBdr')
+            pPr.insert_element_before(pBdr,
+                'w:shd', 'w:tabs', 'w:suppressAutoHyphens', 'w:kinsoku', 'w:wordWrap',
+                'w:overflowPunct', 'w:topLinePunct', 'w:autoSpaceDE', 'w:autoSpaceDN',
+                'w:bidi', 'w:adjustRightInd', 'w:snapToGrid', 'w:spacing', 'w:ind',
+                'w:contextualSpacing', 'w:mirrorIndents', 'w:suppressOverlap', 'w:jc',
+                'w:textDirection', 'w:textAlignment', 'w:textboxTightWrap',
+                'w:outlineLvl', 'w:divId', 'w:cnfStyle', 'w:rPr', 'w:sectPr',
+                'w:pPrChange'
+            )
+            bottom = OxmlElement('w:bottom')
+            bottom.set(qn('w:val'), 'single')
+            bottom.set(qn('w:sz'), '6')
+            bottom.set(qn('w:space'), '1')
+            bottom.set(qn('w:color'), 'auto')
+            pBdr.append(bottom)
+
+        elif re.match('h[1-9]', tag):
             if isinstance(self.doc, docx.document.Document):
                 h_size = int(tag[1])
                 self.paragraph = self.doc.add_heading(level=min(h_size, 9))
