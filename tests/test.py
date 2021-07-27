@@ -1,19 +1,24 @@
 import os
+from pathlib import Path
 import unittest
 from docx import Document
 from .context import HtmlToDocx, test_dir
 
 class OutputTest(unittest.TestCase):
 
+    @staticmethod
+    def get_html_from_file(filename: str):
+        file_path = Path(test_dir) / Path(filename)
+        with open(file_path, 'r') as f:
+            html = f.read()
+        return html
+
     @classmethod
     def setUpClass(cls):
         cls.document = Document()
-        textpath = os.path.join(test_dir, 'text1.html')
-        tablepath = os.path.join(test_dir, 'tables1.html')
-        with open(textpath, 'r') as tb:
-            cls.text1 = tb.read()
-        with open(tablepath, 'r') as tb:
-            cls.table_html = tb.read()
+        cls.text1 = cls.get_html_from_file('text1.html')
+        cls.table_html = cls.get_html_from_file('tables1.html')
+        cls.table2_html = cls.get_html_from_file('tables2.html')
 
     @classmethod
     def tearDownClass(cls):
@@ -53,6 +58,40 @@ class OutputTest(unittest.TestCase):
             level=1
         )
         self.parser.add_html_to_document(self.table_html, self.document)
+
+    def test_add_html_with_tables_accent_style(self):
+        self.document.add_heading(
+            'Test: add html with tables with accent',
+        )
+        self.parser.table_style = 'Light Grid Accent 6'
+        self.parser.add_html_to_document(self.table_html, self.document)
+
+    def test_add_html_with_tables_basic_style(self):
+        self.document.add_heading(
+            'Test: add html with tables with basic style',
+        )
+        self.parser.table_style = 'TableGrid'
+        self.parser.add_html_to_document(self.table_html, self.document)
+
+    def test_add_nested_tables(self):
+        self.document.add_heading(
+            'Test: add nested tables',
+        )
+        self.parser.add_html_to_document(self.table2_html, self.document)
+
+    def test_add_nested_tables_basic_style(self):
+        self.document.add_heading(
+            'Test: add nested tables with basic style',
+        )
+        self.parser.table_style = 'TableGrid'
+        self.parser.add_html_to_document(self.table2_html, self.document)
+
+    def test_add_nested_tables_accent_style(self):
+        self.document.add_heading(
+            'Test: add nested tables with accent style',
+        )
+        self.parser.table_style = 'Light Grid Accent 6'
+        self.parser.add_html_to_document(self.table2_html, self.document)
 
     def test_add_html_skip_tables(self):
         # broken until feature readded

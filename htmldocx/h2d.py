@@ -32,6 +32,9 @@ INDENT = 0.25
 LIST_INDENT = 0.5
 MAX_INDENT = 5.5 # To stop indents going off the page
 
+# Style to use with tables. By default no style is used.
+DEFAULT_TABLE_STYLE = None
+
 def get_filename_from_url(url):
     return os.path.basename(urlparse(url).path)
 
@@ -103,6 +106,7 @@ class HtmlToDocx(HTMLParser):
             'table > tbody > tr',
             'table > tfoot > tr'
         ]
+        self.table_style = DEFAULT_TABLE_STYLE
 
     def set_initial_attrs(self, document=None):
         self.tags = {
@@ -122,6 +126,10 @@ class HtmlToDocx(HTMLParser):
         self.skip = False
         self.skip_tag = None
         self.instances_to_skip = 0
+
+    def copy_settings_from(self, other):
+        """Copy settings from another instance of HtmlToDocx"""
+        self.table_style = other.table_style
 
     def get_cell_html(self, soup):
         # Returns string of td element with opening and closing <td> tags removed
@@ -244,6 +252,13 @@ class HtmlToDocx(HTMLParser):
         table_soup = self.tables[self.table_no]
         rows, cols = self.get_table_dimensions(table_soup)
         self.table = self.doc.add_table(rows, cols)
+
+        if self.table_style:
+            try:
+                self.table.style = self.table_style
+            except KeyError as e:
+                raise ValueError(f"Unable to apply style {self.table_style}.") from e
+
         rows = self.get_table_rows(table_soup)
         cell_row = 0
         for row in rows:
@@ -255,6 +270,7 @@ class HtmlToDocx(HTMLParser):
                     cell_html = "<b>%s</b>" % cell_html
                 docx_cell = self.table.cell(cell_row, cell_col)
                 child_parser = HtmlToDocx()
+                child_parser.copy_settings_from(self)
                 child_parser.add_html_to_cell(cell_html, docx_cell)
                 cell_col += 1
             cell_row += 1
