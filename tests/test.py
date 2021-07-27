@@ -134,6 +134,47 @@ class OutputTest(unittest.TestCase):
         html = '''<p>Line 0 with p tags</p>Line 1 without p tags'''
         self.parser.add_html_to_cell(html, cell)
 
+    def test_inline_code(self):
+        self.document.add_heading(
+            'Test: inline code block',
+            level=1
+        )
+
+        html = "<p>This is a sentence that contains <code>some code elements</code> that " \
+               "should appear as code.</p>"
+        self.parser.add_html_to_document(html, self.document)
+
+    def test_code_block(self):
+        self.document.add_heading(
+            'Test: code block',
+            level=1
+        )
+
+        html = """<p><code>
+This is a code block.
+  That should be NOT be pre-formatted.
+It should NOT retain carriage returns,
+
+or blank lines.
+</code></p>"""
+        self.parser.add_html_to_document(html, self.document)
+
+    def test_pre_block(self):
+        self.document.add_heading(
+            'Test: pre block',
+            level=1
+        )
+
+        html = """<pre>
+This is a pre-formatted block.
+  That should be pre-formatted.
+Retaining any carriage returns,
+
+and blank lines.
+</pre>
+"""
+        self.parser.add_html_to_document(html, self.document)
+
     def test_handling_hr(self):
         self.document.add_heading(
             'Test: Handling of hr',
