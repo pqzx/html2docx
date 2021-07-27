@@ -95,5 +95,13 @@ class OutputTest(unittest.TestCase):
         html = '''<p>Line 0 with p tags</p>Line 1 without p tags'''
         self.parser.add_html_to_cell(html, cell)
 
+    def test_handling_hr(self):
+        self.document.add_heading(
+            'Test: Handling of hr',
+            level=1
+        )
+        self.parser.add_html_to_document("<p>paragraph</p><hr><p>paragraph</p>", self.document)
+
+
 if __name__ == '__main__':
     unittest.main()
