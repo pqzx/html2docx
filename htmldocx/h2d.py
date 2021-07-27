@@ -22,6 +22,8 @@ import docx, docx.table
 from docx import Document
 from docx.shared import RGBColor, Pt, Inches
 from docx.enum.text import WD_COLOR, WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 
 from bs4 import BeautifulSoup
 
@@ -29,6 +31,9 @@ from bs4 import BeautifulSoup
 INDENT = 0.25
 LIST_INDENT = 0.5
 MAX_INDENT = 5.5 # To stop indents going off the page
+
+# Style to use with tables. By default no style is used.
+DEFAULT_TABLE_STYLE = None
 
 def get_filename_from_url(url):
     return os.path.basename(urlparse(url).path)
@@ -145,6 +150,11 @@ font_names = {
     'pre': 'Courier',
 }
 
+styles = {
+    'LIST_BULLET': 'List Bullet',
+    'LIST_NUMBER': 'List Number',
+}
+
 class HtmlToDocx(HTMLParser):
 
     def __init__(self):
@@ -161,6 +171,7 @@ class HtmlToDocx(HTMLParser):
             'table > tbody > tr',
             'table > tfoot > tr'
         ]
+        self.table_style = DEFAULT_TABLE_STYLE
 
     def set_initial_attrs(self, document=None):
         self.tags = {
@@ -180,6 +191,10 @@ class HtmlToDocx(HTMLParser):
         self.skip = False
         self.skip_tag = None
         self.instances_to_skip = 0
+
+    def copy_settings_from(self, other):
+        """Copy settings from another instance of HtmlToDocx"""
+        self.table_style = other.table_style
 
     def get_cell_html(self, soup):
         # Returns string of td element with opening and closing <td> tags removed
@@ -245,9 +260,9 @@ class HtmlToDocx(HTMLParser):
             list_type = 'ul' # assign unordered if no tag
 
         if list_type == 'ol':
-            list_style = "List Number"
+            list_style = styles['LIST_NUMBER']
         else:
-            list_style = 'List Bullet'
+            list_style = styles['LIST_BULLET']
 
         self.paragraph = self.doc.add_paragraph(style=list_style)            
         self.paragraph.paragraph_format.left_indent = Inches(min(list_depth * LIST_INDENT, MAX_INDENT))
@@ -302,6 +317,13 @@ class HtmlToDocx(HTMLParser):
         table_soup = self.tables[self.table_no]
         rows, cols = self.get_table_dimensions(table_soup)
         self.table = self.doc.add_table(rows, cols)
+
+        if self.table_style:
+            try:
+                self.table.style = self.table_style
+            except KeyError as e:
+                raise ValueError(f"Unable to apply style {self.table_style}.") from e
+
         rows = self.get_table_rows(table_soup)
         cell_row = 0
         for row in rows:
@@ -313,6 +335,7 @@ class HtmlToDocx(HTMLParser):
                     cell_html = "<b>%s</b>" % cell_html
                 docx_cell = self.table.cell(cell_row, cell_col)
                 child_parser = HtmlToDocx()
+                child_parser.copy_settings_from(self)
                 child_parser.add_html_to_cell(cell_html, docx_cell)
                 cell_col += 1
             cell_row += 1
@@ -380,7 +403,31 @@ class HtmlToDocx(HTMLParser):
         elif tag == 'li':
             self.handle_li()
 
-        elif tag[0] == 'h' and len(tag) == 2:
+        elif tag == "hr":
+
+            # This implementation was taken from:
+            # https://github.com/python-openxml/python-docx/issues/105#issuecomment-62806373
+
+            self.paragraph = self.doc.add_paragraph()
+            pPr = self.paragraph._p.get_or_add_pPr()
+            pBdr = OxmlElement('w:pBdr')
+            pPr.insert_element_before(pBdr,
+                'w:shd', 'w:tabs', 'w:suppressAutoHyphens', 'w:kinsoku', 'w:wordWrap',
+                'w:overflowPunct', 'w:topLinePunct', 'w:autoSpaceDE', 'w:autoSpaceDN',
+                'w:bidi', 'w:adjustRightInd', 'w:snapToGrid', 'w:spacing', 'w:ind',
+                'w:contextualSpacing', 'w:mirrorIndents', 'w:suppressOverlap', 'w:jc',
+                'w:textDirection', 'w:textAlignment', 'w:textboxTightWrap',
+                'w:outlineLvl', 'w:divId', 'w:cnfStyle', 'w:rPr', 'w:sectPr',
+                'w:pPrChange'
+            )
+            bottom = OxmlElement('w:bottom')
+            bottom.set(qn('w:val'), 'single')
+            bottom.set(qn('w:sz'), '6')
+            bottom.set(qn('w:space'), '1')
+            bottom.set(qn('w:color'), 'auto')
+            pBdr.append(bottom)
+
+        elif re.match('h[1-9]', tag):
             if isinstance(self.doc, docx.document.Document):
                 h_size = int(tag[1])
                 self.paragraph = self.doc.add_heading(level=min(h_size, 9))
