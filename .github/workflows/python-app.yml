@@ -44,3 +44,4 @@ jobs:
         path: |
           tests/test.docx
           tests/new_docx_file_tables2.html.docx
+          tests/new_docx_file_code.html.docx

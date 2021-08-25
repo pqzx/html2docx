@@ -125,7 +125,7 @@ def remove_whitespace(string, leading=False, trailing=False):
 
     # Replace new line characters and absorb any surrounding space.
     string = re.sub(r'\s*\n\s*', ' ', string)
-    return re.sub(r'>\s{2+}<', '><', string)
+    return re.sub(r'\s+', ' ', string)
 
 def delete_paragraph(paragraph):
     # https://github.com/python-openxml/python-docx/issues/33#issuecomment-77661907
