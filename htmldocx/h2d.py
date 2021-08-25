@@ -125,6 +125,7 @@ def remove_whitespace(string, leading=False, trailing=False):
 
     # Replace new line characters and absorb any surrounding space.
     string = re.sub(r'\s*\n\s*', ' ', string)
+    # TODO need some way to get rid of extra spaces in e.g. text <span>   </span>  text
     return re.sub(r'\s+', ' ', string)
 
 def delete_paragraph(paragraph):
@@ -363,7 +364,17 @@ class HtmlToDocx(HTMLParser):
         # Create sub-run
         subrun = self.paragraph.add_run()
         rPr = docx.oxml.shared.OxmlElement('w:rPr')
-        rPr.style = 'Hyperlink'
+
+        # add default color
+        c = docx.oxml.shared.OxmlElement('w:color')
+        c.set(docx.oxml.shared.qn('w:val'), "0000EE")
+        rPr.append(c)
+
+        # add underline
+        u = docx.oxml.shared.OxmlElement('w:u')
+        u.set(docx.oxml.shared.qn('w:val'), 'single')
+        rPr.append(u)
+
         subrun._r.append(rPr)
         subrun._r.text = text
 
@@ -489,15 +500,8 @@ class HtmlToDocx(HTMLParser):
 
         # Only remove white space if we're not in a pre block.
         if 'pre' not in self.tags:
-
-            args = {}
-
-            # In a code block we want to strip leading and trailing new lines and white space.
-            # Without this we would have a leading space in the code block.
-            if 'code' in self.tags:
-                args['leading'] = True
-                args['trailing'] = True
-            data = remove_whitespace(data, **args)
+            # remove leading and trailing whitespace in all instances
+            data = remove_whitespace(data, True, True)
 
         if not self.paragraph:
             self.paragraph = self.doc.add_paragraph()
