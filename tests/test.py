@@ -125,13 +125,18 @@ class OutputTest(unittest.TestCase):
             'Test: add_html_to_cells method',
             level=1
         )
-        table = self.document.add_table(2,2, style='Table Grid')
-        cell = table.cell(0,0)
+        table = self.document.add_table(2, 3, style='Table Grid')
+        cell = table.cell(0, 0)
         html = '''Line 0 without p tags<p>Line 1 with P tags</p>'''
         self.parser.add_html_to_cell(html, cell)
 
-        cell = table.cell(0,1)
+        cell = table.cell(0, 1)
         html = '''<p>Line 0 with p tags</p>Line 1 without p tags'''
+        self.parser.add_html_to_cell(html, cell)
+
+        cell = table.cell(0, 2)
+        cell.text = "Pre-defined text that shouldn't be removed."
+        html = '''<p>Add HTML to non-empty cell.</p>'''
         self.parser.add_html_to_cell(html, cell)
 
     def test_inline_code(self):
