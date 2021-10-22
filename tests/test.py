@@ -35,6 +35,24 @@ class OutputTest(unittest.TestCase):
         )
         self.parser.add_html_to_document(self.text1, self.document)
 
+    def test_html_with_default_paragraph_style(self):
+        self.document.add_heading(
+            'Test: add regular html with a default paragraph style defined',
+            level=1
+        )
+        self.parser.paragraph_style = 'Quote'
+        self.parser.add_html_to_document(self.text1, self.document)
+
+    def test_add_html_to_table_cell_with_default_paragraph_style(self):
+        self.document.add_heading(
+            'Test: regular html to table cell with a default paragraph style defined',
+            level=1
+        )
+        self.parser.paragraph_style = 'Quote'
+        table = self.document.add_table(2, 2, style='Table Grid')
+        cell = table.cell(1, 1)
+        self.parser.add_html_to_document(self.text1, cell)
+
     def test_add_html_to_table_cell(self):
         self.document.add_heading(
             'Test: regular html with images, links, some formatting to table cell',
