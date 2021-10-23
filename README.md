@@ -62,4 +62,22 @@ To add borders to tables, use the `TableGrid` style:
 new_parser.table_style = 'TableGrid'
 ```
 
-Default table styles can be found here: https://python-docx.readthedocs.io/en/latest/user/styles-understanding.html#table-styles-in-default-template
+Default table styles can be found
+here: https://python-docx.readthedocs.io/en/latest/user/styles-understanding.html#table-styles-in-default-template
+
+Change default paragraph style
+
+No style is applied to the paragraphs by default. Use the `paragraph_style` attribute on the parser
+to set a default paragraph style. The style is used for all paragraphs. If additional styling (
+color, background color, alignment...) is defined in the HTML, it will be applied after the
+paragraph style.
+
+```
+from htmldocx import HtmlToDocx
+
+new_parser = HtmlToDocx()
+new_parser.paragraph_style = 'Quote'
+```
+
+Default paragraph styles can be found
+here: https://python-docx.readthedocs.io/en/latest/user/styles-understanding.html#paragraph-styles-in-default-template
