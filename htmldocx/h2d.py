@@ -611,7 +611,8 @@ class HtmlToDocx(HTMLParser):
         if not isinstance(cell, docx.table._Cell):
             raise ValueError('Second argument needs to be a %s' % docx.table._Cell)
         unwanted_paragraph = cell.paragraphs[0]
-        delete_paragraph(unwanted_paragraph)
+        if unwanted_paragraph.text == "":
+            delete_paragraph(unwanted_paragraph)
         self.set_initial_attrs(cell)
         self.run_process(html)
         # cells must end with a paragraph or will get message about corrupt file
