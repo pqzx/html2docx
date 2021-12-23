@@ -12,6 +12,7 @@ user can pass existing document object as arg
 
 How to deal with block level style applied over table elements? e.g. text align
 """
+import enum
 import re, argparse
 import io, os
 import urllib.request
@@ -138,6 +139,21 @@ def delete_paragraph(paragraph):
     p.getparent().remove(p)
     p._p = p._element = None
 
+
+class ImageAlignment(enum.Enum):
+    LEFT = 1
+    CENTER = 2
+    RIGHT = 3
+
+
+def get_image_alignment(image_style):
+    if image_style == 'float: right;':
+        return ImageAlignment.RIGHT
+    if image_style == 'display: block; margin-left: auto; margin-right: auto;':
+        return ImageAlignment.CENTER
+    return ImageAlignment.LEFT
+
+
 font_styles = {
     'b': 'bold',
     'strong': 'bold',
@@ -239,7 +255,7 @@ class HtmlToDocx(HTMLParser):
                 # TODO map colors to named colors (and extended colors...)
                 # For now set color to black to prevent crashing
             self.run.font.color.rgb = RGBColor(*colors)
-            
+
         if 'background-color' in style:
             if 'rgb' in style['background-color']:
                 color = color = re.sub(r'[a-z()]+', '', style['background-color'])
@@ -280,7 +296,7 @@ class HtmlToDocx(HTMLParser):
         else:
             list_style = styles['LIST_BULLET']
 
-        self.paragraph = self.doc.add_paragraph(style=list_style)            
+        self.paragraph = self.doc.add_paragraph(style=list_style)
         self.paragraph.paragraph_format.left_indent = Inches(min(list_depth * LIST_INDENT, MAX_INDENT))
         self.paragraph.paragraph_format.line_spacing = 1
 
@@ -320,7 +336,20 @@ class HtmlToDocx(HTMLParser):
             else:
                 # avoid exposing filepaths in document
                 self.doc.add_paragraph("<image: %s>" % get_filename_from_url(src))
-        # add styles?
+        '''
+        #adding style
+        For right-alignment: `'float: right;'`
+        For center-alignment: `'display: block; margin-left: auto; margin-right: auto;'`
+        Everything else would be Left aligned
+        '''
+        if 'style' in current_attrs:
+            style = current_attrs['style']
+            image_alignment = get_image_alignment(style)
+            last_paragraph = self.doc.paragraphs[-1]
+            if image_alignment == ImageAlignment.RIGHT:
+                last_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            if image_alignment == ImageAlignment.CENTER:
+                last_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     def handle_table(self):
         """
@@ -355,7 +384,7 @@ class HtmlToDocx(HTMLParser):
                 child_parser.add_html_to_cell(cell_html, docx_cell)
                 cell_col += 1
             cell_row += 1
-        
+
         # skip all tags until corresponding closing tag
         self.instances_to_skip = len(table_soup.find_all('table'))
         self.skip_tag = 'table'
@@ -588,7 +617,7 @@ class HtmlToDocx(HTMLParser):
             self.include_tables = False
             return
             # find other way to do it, or require this dependency?
-        self.tables = self.ignore_nested_tables(self.soup.find_all('table'))  
+        self.tables = self.ignore_nested_tables(self.soup.find_all('table'))
         self.table_no = 0
 
     def run_process(self, html):
@@ -618,7 +647,7 @@ class HtmlToDocx(HTMLParser):
         # cells must end with a paragraph or will get message about corrupt file
         # https://stackoverflow.com/a/29287121
         if not self.doc.paragraphs:
-            self.doc.add_paragraph('')  
+            self.doc.add_paragraph('')
 
     def parse_html_file(self, filename_html, filename_docx=None):
         with open(filename_html, 'r') as infile:
@@ -629,23 +658,23 @@ class HtmlToDocx(HTMLParser):
             path, filename = os.path.split(filename_html)
             filename_docx = '%s/new_docx_file_%s' % (path, filename)
         self.doc.save('%s.docx' % filename_docx)
-    
+
     def parse_html_string(self, html):
         self.set_initial_attrs()
         self.run_process(html)
         return self.doc
 
 if __name__=='__main__':
-    
+
     arg_parser = argparse.ArgumentParser(description='Convert .html file into .docx file with formatting')
     arg_parser.add_argument('filename_html', help='The .html file to be parsed')
     arg_parser.add_argument(
-        'filename_docx', 
-        nargs='?', 
-        help='The name of the .docx file to be saved. Default new_docx_file_[filename_html]', 
+        'filename_docx',
+        nargs='?',
+        help='The name of the .docx file to be saved. Default new_docx_file_[filename_html]',
         default=None
     )
-    arg_parser.add_argument('--bs', action='store_true', 
+    arg_parser.add_argument('--bs', action='store_true',
         help='Attempt to fix html before parsing. Requires bs4. Default True')
 
     args = vars(arg_parser.parse_args())
