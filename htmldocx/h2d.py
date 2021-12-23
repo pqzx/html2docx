@@ -25,6 +25,7 @@ from docx.shared import RGBColor, Pt, Inches
 from docx.enum.text import WD_COLOR, WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
+from docx.shared import Pt
 
 from bs4 import BeautifulSoup
 
@@ -306,11 +307,11 @@ class HtmlToDocx(HTMLParser):
         self.paragraph.paragraph_format.left_indent = Inches(min(list_depth * LIST_INDENT, MAX_INDENT))
         self.paragraph.paragraph_format.line_spacing = 1
 
-    def add_image_to_cell(self, cell, image):
+    def add_image_to_cell(self, cell, image,width,height):
         # python-docx doesn't have method yet for adding images to table cells. For now we use this
         paragraph = cell.add_paragraph()
         run = paragraph.add_run()
-        run.add_picture(image)
+        run.add_picture(image,width,height)
 
     def handle_img(self, current_attrs):
         if not self.include_images:
@@ -318,6 +319,9 @@ class HtmlToDocx(HTMLParser):
             self.skip_tag = 'img'
             return
         src = current_attrs['src']
+        # added image dimension, interpreting values as pixel only
+        height = Pt(int(current_attrs['height'][:-2])) if 'height' in current_attrs else None
+        width = Pt(int(current_attrs['width'][:-2])) if 'width' in current_attrs else None
         # fetch image
         src_is_url = is_url(src)
         if src_is_url:
@@ -331,9 +335,9 @@ class HtmlToDocx(HTMLParser):
         if image:
             try:
                 if isinstance(self.doc, docx.document.Document):
-                    self.doc.add_picture(image)
+                    self.doc.add_picture(image,width,height)
                 else:
-                    self.add_image_to_cell(self.doc, image)
+                    self.add_image_to_cell(self.doc, image,width,height)
             except FileNotFoundError:
                 image = None
         if not image:
