@@ -568,7 +568,30 @@ class HtmlToDocx(HTMLParser):
 
     def get_table_rows(self, table_soup):
         # If there's a header, body, footer or direct child tr tags, add row dimensions from there
-        return table_soup.select(', '.join(self.table_row_selectors), recursive=False)
+        rows = table_soup.select(', '.join(self.table_row_selectors), recursive=False)
+        results = [[data.get_text() for data in row.find_all('td')] for row in rows]
+        rowspan = []
+        for no, tr in enumerate(rows):
+            tmp = []
+            for td_no, data in enumerate(tr.find_all('td')):
+                print(data.has_attr("rowspan"))
+                if data.has_attr("rowspan"):
+                    rowspan.append((no, td_no, int(data["rowspan"]), data.get_text()))
+        if rowspan:
+            for i in rowspan:
+                # tr value of rowspan in present in 1th place in results
+                for j in range(1, i[2]):
+                    #- Add value in next tr.
+                    results[i[0]+j].insert(i[1], "") 
+        new_result = []
+        for row in results:
+            new_html = "<tr>"
+            for td in row:
+                new_html += f"<td>{td}</td>"
+            new_html += "</tr>"
+            soup = BeautifulSoup(new_html)
+            new_result.append(soup.tr)
+        return new_result
 
     def get_table_columns(self, row):
         # Get all columns for the specified row tag.
