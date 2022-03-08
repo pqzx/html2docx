@@ -307,7 +307,7 @@ class HtmlToDocx(HTMLParser):
         self.paragraph.paragraph_format.left_indent = Inches(min(list_depth * LIST_INDENT, MAX_INDENT))
         self.paragraph.paragraph_format.line_spacing = 1
 
-    def add_image_to_cell(self, cell, image,width,height):
+    def add_image_to_cell(self, cell, image, width, height):
         # python-docx doesn't have method yet for adding images to table cells. For now we use this
         paragraph = cell.add_paragraph()
         run = paragraph.add_run()
