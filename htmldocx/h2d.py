@@ -12,22 +12,24 @@ user can pass existing document object as arg
 
 How to deal with block level style applied over table elements? e.g. text align
 """
+import argparse
 import enum
-import re, argparse
-import io, os
+import io
+import os
+import re
 import urllib.request
-from urllib.parse import urlparse
 from html.parser import HTMLParser
+from urllib.parse import urlparse
 
-import docx, docx.table
+import docx
+import docx.table
+from bs4 import BeautifulSoup
 from docx import Document
-from docx.shared import RGBColor, Pt, Inches
 from docx.enum.text import WD_COLOR, WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Pt
-
-from bs4 import BeautifulSoup
+from docx.shared import RGBColor, Inches
 
 # values in inches
 INDENT = 0.25
@@ -311,7 +313,7 @@ class HtmlToDocx(HTMLParser):
         # python-docx doesn't have method yet for adding images to table cells. For now we use this
         paragraph = cell.add_paragraph()
         run = paragraph.add_run()
-        run.add_picture(image,width,height)
+        run.add_picture(image, width, height)
 
     def handle_img(self, current_attrs):
         if not self.include_images:
@@ -335,9 +337,9 @@ class HtmlToDocx(HTMLParser):
         if image:
             try:
                 if isinstance(self.doc, docx.document.Document):
-                    self.doc.add_picture(image,width,height)
+                    self.doc.add_picture(image, width, height)
                 else:
-                    self.add_image_to_cell(self.doc, image,width,height)
+                    self.add_image_to_cell(self.doc, image, width, height)
             except FileNotFoundError:
                 image = None
         if not image:
