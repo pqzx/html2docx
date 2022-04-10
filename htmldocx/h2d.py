@@ -12,14 +12,22 @@ user can pass existing document object as arg
 
 How to deal with block level style applied over table elements? e.g. text align
 """
+import base64
+import binascii
+import http
+import pathlib
 import re, argparse
 import io, os
+import time
 import urllib.request
+from typing import Optional, cast, Dict
 from urllib.parse import urlparse
 from html.parser import HTMLParser
 
 import docx, docx.table
 from docx import Document
+from docx.image.exceptions import UnrecognizedImageError
+from docx.image.image import Image
 from docx.shared import RGBColor, Pt, Inches
 from docx.enum.text import WD_COLOR, WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
@@ -27,10 +35,18 @@ from docx.oxml.ns import qn
 
 from bs4 import BeautifulSoup
 
+USABLE_HEIGHT = Inches(8.1)
+USABLE_WIDTH = Inches(5.8)
+DEFAULT_DPI = 72
+
+MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10 MiB
+
+RFC_2397_BASE64 = ";base64"
+
 # values in inches
 INDENT = 0.25
 LIST_INDENT = 0.5
-MAX_INDENT = 5.5 # To stop indents going off the page
+MAX_INDENT = 5.5  # To stop indents going off the page
 
 # Style to use with tables. By default no style is used.
 DEFAULT_TABLE_STYLE = None
@@ -42,6 +58,7 @@ DEFAULT_PARAGRAPH_STYLE = None
 def get_filename_from_url(url):
     return os.path.basename(urlparse(url).path)
 
+
 def is_url(url):
     """
     Not to be used for actually validating a url, but in our use case we only 
@@ -50,22 +67,76 @@ def is_url(url):
     parts = urlparse(url)
     return all([parts.scheme, parts.netloc, parts.path])
 
-def fetch_image(url):
-    """
-    Attempts to fetch an image from a url. 
-    If successful returns a bytes object, else returns None
 
-    :return:
-    """
-    try:
-        with urllib.request.urlopen(url) as response:
-            # security flaw?
-            return io.BytesIO(response.read())
-    except urllib.error.URLError:
-        return None
+def make_image(data: Optional[bytes]) -> io.BytesIO:
+    image_buffer = None
+    if data:
+        image_buffer = io.BytesIO(data)
+        try:
+            Image.from_blob(image_buffer.getbuffer())
+        except UnrecognizedImageError:
+            image_buffer = None
+
+    if not image_buffer:
+        broken_img_path = pathlib.Path(__file__).parent / "image-broken.png"
+        image_buffer = io.BytesIO(broken_img_path.read_bytes())
+
+    return image_buffer
+
+
+def load_external_image(src: str) -> Optional[bytes]:
+    data = None
+    retry = 3
+    while retry and not data:
+        try:
+            with urllib.request.urlopen(src) as response:
+                size = response.getheader("Content-Length")
+                if size and int(size) > MAX_IMAGE_SIZE:
+                    break
+                # Read up to MAX_IMAGE_SIZE when response does not contain
+                # the Content-Length header. The extra byte avoids an extra read to
+                # check whether the EOF was reached.
+                data = cast(bytes, response.read(MAX_IMAGE_SIZE + 1))
+        except (ValueError, http.client.HTTPException, urllib.error.HTTPError):
+            # ValueError: Invalid URL or non-integer Content-Length.
+            # HTTPException: Server does not speak HTTP properly.
+            # HTTPError: Server could not perform request.
+            retry = 0
+        except urllib.error.URLError:
+            # URLError: Transient network error, e.g. DNS request failed.
+            retry -= 1
+            if retry:
+                time.sleep(1)
+        else:
+            if len(data) <= MAX_IMAGE_SIZE:
+                return data
+    return None
+
+
+def load_inline_image(src: str) -> Optional[bytes]:
+    image_data = None
+    header_data = src.split(RFC_2397_BASE64 + ",", maxsplit=1)
+    if len(header_data) == 2:
+        data = header_data[1]
+        try:
+            image_data = base64.b64decode(data, validate=True)
+        except (binascii.Error, ValueError):
+            # binascii.Error: Character outside of base64 set.
+            # ValueError: Character outside of ASCII.
+            pass
+    return image_data
+
+
+def load_image(src: str) -> io.BytesIO:
+    image_bytes = (
+        load_inline_image(src) if src.startswith("data:") else load_external_image(src)
+    )
+    return make_image(image_bytes)
+
 
 def remove_last_occurence(ls, x):
     ls.pop(len(ls) - ls[::-1].index(x) - 1)
+
 
 def remove_whitespace(string, leading=False, trailing=False):
     """Remove white space from a string.
@@ -132,11 +203,13 @@ def remove_whitespace(string, leading=False, trailing=False):
     # TODO need some way to get rid of extra spaces in e.g. text <span>   </span>  text
     return re.sub(r'\s+', ' ', string)
 
+
 def delete_paragraph(paragraph):
     # https://github.com/python-openxml/python-docx/issues/33#issuecomment-77661907
     p = paragraph._element
     p.getparent().remove(p)
     p._p = p._element = None
+
 
 font_styles = {
     'b': 'bold',
@@ -159,6 +232,7 @@ styles = {
     'LIST_BULLET': 'List Bullet',
     'LIST_NUMBER': 'List Number',
 }
+
 
 class HtmlToDocx(HTMLParser):
 
@@ -188,9 +262,9 @@ class HtmlToDocx(HTMLParser):
             self.doc = document
         else:
             self.doc = Document()
-        self.bs = self.options['fix-html'] # whether or not to clean with BeautifulSoup
+        self.bs = self.options['fix-html']  # whether or not to clean with BeautifulSoup
         self.document = self.doc
-        self.include_tables = True #TODO add this option back in?
+        self.include_tables = True  # TODO add this option back in?
         self.include_images = self.options['images']
         self.include_styles = self.options['styles']
         self.paragraph = None
@@ -218,13 +292,44 @@ class HtmlToDocx(HTMLParser):
                 self.paragraph.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.RIGHT
             elif align == 'justify':
                 self.paragraph.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        if 'margin-left' in style:
+        if 'margin-left' in style and 'margin-right' in style:
+            margin_left = style['margin-left']
+            margin_right = style['margin-right']
+            if "auto" in margin_left and "auto" in margin_right:
+                self.paragraph.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        elif 'margin-left' in style:
             margin = style['margin-left']
             units = re.sub(r'[0-9]+', '', margin)
-            margin = int(float(re.sub(r'[a-z]+', '', margin)))
-            if units == 'px':
-                self.paragraph.paragraph_format.left_indent = Inches(min(margin // 10 * INDENT, MAX_INDENT))
-            # TODO handle non px units
+            margin_suffix = re.sub(r'[a-z]+', '', margin)
+            if len(margin_suffix) > 0:
+                margin = int(float(margin_suffix))
+                if units == 'px':
+                    self.paragraph.paragraph_format.left_indent = Inches(min(margin // 10 * INDENT, MAX_INDENT))
+                # TODO handle non px units
+
+    def add_styles_to_table(self, style):
+        if 'text-align' in style:
+            align = style['text-align']
+            if align == 'center':
+                self.table.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            elif align == 'right':
+                self.table.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            elif align == 'justify':
+                self.table.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        if 'margin-left' in style and 'margin-right' in style:
+            margin_left = style['margin-left']
+            margin_right = style['margin-right']
+            if "auto" in margin_left and "auto" in margin_right:
+                self.table.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        elif 'margin-left' in style:
+            margin = style['margin-left']
+            units = re.sub(r'[0-9]+', '', margin)
+            margin_suffix = re.sub(r'[a-z]+', '', margin)
+            if len(margin_suffix) > 0:
+                margin = int(float(margin_suffix))
+                if units == 'px':
+                    self.table.left_indent = Inches(min(margin // 10 * INDENT, MAX_INDENT))
+                # TODO handle non px units
 
     def add_styles_to_run(self, style):
         if 'color' in style:
@@ -233,25 +338,25 @@ class HtmlToDocx(HTMLParser):
                 colors = [int(x) for x in color.split(',')]
             elif '#' in style['color']:
                 color = style['color'].lstrip('#')
-                colors = tuple(int(color[i:i+2], 16) for i in (0, 2, 4))
+                colors = tuple(int(color[i:i + 2], 16) for i in (0, 2, 4))
             else:
                 colors = [0, 0, 0]
                 # TODO map colors to named colors (and extended colors...)
                 # For now set color to black to prevent crashing
             self.run.font.color.rgb = RGBColor(*colors)
-            
+
         if 'background-color' in style:
             if 'rgb' in style['background-color']:
                 color = color = re.sub(r'[a-z()]+', '', style['background-color'])
                 colors = [int(x) for x in color.split(',')]
             elif '#' in style['background-color']:
                 color = style['background-color'].lstrip('#')
-                colors = tuple(int(color[i:i+2], 16) for i in (0, 2, 4))
+                colors = tuple(int(color[i:i + 2], 16) for i in (0, 2, 4))
             else:
                 colors = [0, 0, 0]
                 # TODO map colors to named colors (and extended colors...)
                 # For now set color to black to prevent crashing
-            self.run.font.highlight_color = WD_COLOR.GRAY_25 #TODO: map colors
+            self.run.font.highlight_color = WD_COLOR.GRAY_25  # TODO: map colors
 
     def apply_paragraph_style(self, style=None):
         try:
@@ -273,14 +378,14 @@ class HtmlToDocx(HTMLParser):
         if list_depth:
             list_type = self.tags['list'][-1]
         else:
-            list_type = 'ul' # assign unordered if no tag
+            list_type = 'ul'  # assign unordered if no tag
 
         if list_type == 'ol':
             list_style = styles['LIST_NUMBER']
         else:
             list_style = styles['LIST_BULLET']
 
-        self.paragraph = self.doc.add_paragraph(style=list_style)            
+        self.paragraph = self.doc.add_paragraph(style=list_style)
         self.paragraph.paragraph_format.left_indent = Inches(min(list_depth * LIST_INDENT, MAX_INDENT))
         self.paragraph.paragraph_format.line_spacing = 1
 
@@ -295,21 +400,20 @@ class HtmlToDocx(HTMLParser):
             self.skip = True
             self.skip_tag = 'img'
             return
-        src = current_attrs['src']
-        # fetch image
+        src = current_attrs.get("src")
         src_is_url = is_url(src)
-        if src_is_url:
-            try:
-                image = fetch_image(src)
-            except urllib.error.URLError:
-                image = None
-        else:
-            image = src
+        height_attr = current_attrs.get("height")
+        width_attr = current_attrs.get("width")
+        height_px = int(height_attr) if height_attr else None
+        width_px = int(width_attr) if width_attr else None
+
+        image = load_image(src)
+        size = image_size(image, width_px, height_px)
         # add image to doc
         if image:
             try:
                 if isinstance(self.doc, docx.document.Document):
-                    self.doc.add_picture(image)
+                    self.doc.add_picture(image, **size)
                 else:
                     self.add_image_to_cell(self.doc, image)
             except FileNotFoundError:
@@ -320,9 +424,8 @@ class HtmlToDocx(HTMLParser):
             else:
                 # avoid exposing filepaths in document
                 self.doc.add_paragraph("<image: %s>" % get_filename_from_url(src))
-        # add styles?
 
-    def handle_table(self):
+    def handle_table(self, current_attrs):
         """
         To handle nested tables, we will parse tables manually as follows:
         Get table soup
@@ -355,12 +458,21 @@ class HtmlToDocx(HTMLParser):
                 child_parser.add_html_to_cell(cell_html, docx_cell)
                 cell_col += 1
             cell_row += 1
-        
+
+        if 'style' in current_attrs and self.table:
+            style = self.parse_dict_string(current_attrs['style'])
+            self.add_styles_to_table(style)
+
         # skip all tags until corresponding closing tag
         self.instances_to_skip = len(table_soup.find_all('table'))
         self.skip_tag = 'table'
         self.skip = True
         self.table = None
+
+    def handle_div(self, current_attrs):
+        # handle page break
+        if 'style' in current_attrs and "page-break-after: always" in current_attrs['style']:
+            self.doc.add_page_break()
 
     def handle_link(self, href, text):
         # Link requires a relationship
@@ -374,7 +486,6 @@ class HtmlToDocx(HTMLParser):
         # Create the w:hyperlink tag and add needed values
         hyperlink = docx.oxml.shared.OxmlElement('w:hyperlink')
         hyperlink.set(docx.oxml.shared.qn('r:id'), rel_id)
-
 
         # Create sub-run
         subrun = self.paragraph.add_run()
@@ -417,7 +528,7 @@ class HtmlToDocx(HTMLParser):
             return
         elif tag == 'ol' or tag == 'ul':
             self.tags['list'].append(tag)
-            return # don't apply styles for now
+            return  # don't apply styles for now
         elif tag == 'br':
             self.run.add_break()
             return
@@ -439,14 +550,14 @@ class HtmlToDocx(HTMLParser):
             pPr = self.paragraph._p.get_or_add_pPr()
             pBdr = OxmlElement('w:pBdr')
             pPr.insert_element_before(pBdr,
-                'w:shd', 'w:tabs', 'w:suppressAutoHyphens', 'w:kinsoku', 'w:wordWrap',
-                'w:overflowPunct', 'w:topLinePunct', 'w:autoSpaceDE', 'w:autoSpaceDN',
-                'w:bidi', 'w:adjustRightInd', 'w:snapToGrid', 'w:spacing', 'w:ind',
-                'w:contextualSpacing', 'w:mirrorIndents', 'w:suppressOverlap', 'w:jc',
-                'w:textDirection', 'w:textAlignment', 'w:textboxTightWrap',
-                'w:outlineLvl', 'w:divId', 'w:cnfStyle', 'w:rPr', 'w:sectPr',
-                'w:pPrChange'
-            )
+                                      'w:shd', 'w:tabs', 'w:suppressAutoHyphens', 'w:kinsoku', 'w:wordWrap',
+                                      'w:overflowPunct', 'w:topLinePunct', 'w:autoSpaceDE', 'w:autoSpaceDN',
+                                      'w:bidi', 'w:adjustRightInd', 'w:snapToGrid', 'w:spacing', 'w:ind',
+                                      'w:contextualSpacing', 'w:mirrorIndents', 'w:suppressOverlap', 'w:jc',
+                                      'w:textDirection', 'w:textAlignment', 'w:textboxTightWrap',
+                                      'w:outlineLvl', 'w:divId', 'w:cnfStyle', 'w:rPr', 'w:sectPr',
+                                      'w:pPrChange'
+                                      )
             bottom = OxmlElement('w:bottom')
             bottom.set(qn('w:val'), 'single')
             bottom.set(qn('w:sz'), '6')
@@ -463,11 +574,14 @@ class HtmlToDocx(HTMLParser):
 
         elif tag == 'img':
             self.handle_img(current_attrs)
-            return
+            self.paragraph = self.doc.paragraphs[-1]
 
         elif tag == 'table':
-            self.handle_table()
+            self.handle_table(current_attrs)
             return
+
+        elif tag == "div":
+            self.handle_div(current_attrs)
 
         # set new run reference point in case of leading line breaks
         if tag in ['p', 'li', 'pre']:
@@ -588,7 +702,7 @@ class HtmlToDocx(HTMLParser):
             self.include_tables = False
             return
             # find other way to do it, or require this dependency?
-        self.tables = self.ignore_nested_tables(self.soup.find_all('table'))  
+        self.tables = self.ignore_nested_tables(self.soup.find_all('table'))
         self.table_no = 0
 
     def run_process(self, html):
@@ -618,7 +732,7 @@ class HtmlToDocx(HTMLParser):
         # cells must end with a paragraph or will get message about corrupt file
         # https://stackoverflow.com/a/29287121
         if not self.doc.paragraphs:
-            self.doc.add_paragraph('')  
+            self.doc.add_paragraph('')
 
     def parse_html_file(self, filename_html, filename_docx=None):
         with open(filename_html, 'r') as infile:
@@ -629,26 +743,80 @@ class HtmlToDocx(HTMLParser):
             path, filename = os.path.split(filename_html)
             filename_docx = '%s/new_docx_file_%s' % (path, filename)
         self.doc.save('%s.docx' % filename_docx)
-    
+
     def parse_html_string(self, html):
         self.set_initial_attrs()
         self.run_process(html)
         return self.doc
 
-if __name__=='__main__':
-    
+
+if __name__ == '__main__':
     arg_parser = argparse.ArgumentParser(description='Convert .html file into .docx file with formatting')
     arg_parser.add_argument('filename_html', help='The .html file to be parsed')
     arg_parser.add_argument(
-        'filename_docx', 
-        nargs='?', 
-        help='The name of the .docx file to be saved. Default new_docx_file_[filename_html]', 
+        'filename_docx',
+        nargs='?',
+        help='The name of the .docx file to be saved. Default new_docx_file_[filename_html]',
         default=None
     )
-    arg_parser.add_argument('--bs', action='store_true', 
-        help='Attempt to fix html before parsing. Requires bs4. Default True')
+    arg_parser.add_argument('--bs', action='store_true',
+                            help='Attempt to fix html before parsing. Requires bs4. Default True')
 
     args = vars(arg_parser.parse_args())
     file_html = args.pop('filename_html')
     html_parser = HtmlToDocx()
     html_parser.parse_html_file(file_html, **args)
+
+
+def image_size(
+    image_buffer: io.BytesIO,
+    width_px: Optional[int] = None,
+    height_px: Optional[int] = None,
+) -> Dict[str, int]:
+    """
+    Compute width and height to feed python-docx so that image is contained in the page
+    and respects width_px and height_px.
+    Return:
+        Empty: No resize
+        Single dimension (width or height): image ratio is expected to be maintained
+        Two dimensions (width and height): image should be resized to dimensions
+    """
+    image = Image.from_blob(image_buffer.getbuffer())
+
+    # Normalize image size to inches.
+    # - Without a specified pixel size, images are their actual pixel size, so that
+    #   images of the same pixel size appear the same size in the document, regardless
+    #   of their resolution.
+    # - With a specified pixel size, images should take the specified size, regardless
+    #   of their resolution.
+    if height_px is None:
+        height = image.px_height / image.vert_dpi
+    else:
+        height = height_px / DEFAULT_DPI
+    if width_px is None:
+        width = image.px_width / image.horz_dpi
+    else:
+        width = width_px / DEFAULT_DPI
+
+    height = Inches(height)
+    width = Inches(width)
+
+    size = {}
+    if width > USABLE_WIDTH:
+        new_height = round(image.px_height / (image.px_width / USABLE_WIDTH))
+        if new_height > USABLE_HEIGHT:
+            size["height"] = USABLE_HEIGHT
+        else:
+            size["width"] = USABLE_WIDTH
+    elif height > USABLE_HEIGHT:
+        new_width = round(image.px_width / (image.px_height / USABLE_HEIGHT))
+        if new_width > USABLE_WIDTH:
+            size["width"] = USABLE_WIDTH
+        else:
+            size["height"] = USABLE_HEIGHT
+    else:
+        if width_px is not None:
+            size["width"] = width
+        if height_px is not None:
+            size["height"] = height
+    return size
