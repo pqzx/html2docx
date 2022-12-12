@@ -230,7 +230,7 @@ class HtmlToDocx(HTMLParser):
         if 'color' in style:
             if 'rgb' in style['color']:
                 color = re.sub(r'[a-z()]+', '', style['color'])
-                colors = [int(x) for x in color.split(',')]
+                colors = [int(x) for x in color.split(',')[:3]] # 原来处理color: rgba(38, 42, 51, 0.9); 时，有后面的0.9透明度就会报错，现在只截取前3个
             elif '#' in style['color']:
                 color = style['color'].lstrip('#')
                 colors = tuple(int(color[i:i+2], 16) for i in (0, 2, 4))
@@ -309,7 +309,13 @@ class HtmlToDocx(HTMLParser):
         if image:
             try:
                 if isinstance(self.doc, docx.document.Document):
-                    self.doc.add_picture(image)
+                    width = current_attrs.get('width')
+                    height = current_attrs.get('height')
+                    self.doc.add_picture(
+                        image_path_or_stream=image,
+                        width=Inches(int(width) / 72) if width else None,  # 72 is the default dpi
+                        height=Inches(int(height) / 72) if height else None
+                    )
                 else:
                     self.add_image_to_cell(self.doc, image)
             except FileNotFoundError:
@@ -616,15 +622,19 @@ class HtmlToDocx(HTMLParser):
             html = str(self.soup)
         if self.include_tables:
             self.get_tables()
+
         self.feed(html)
+
 
     def add_html_to_document(self, html, document):
         if not isinstance(html, str):
             raise ValueError('First argument needs to be a %s' % str)
         elif not isinstance(document, docx.document.Document) and not isinstance(document, docx.table._Cell):
             raise ValueError('Second argument needs to be a %s' % docx.document.Document)
+
         self.set_initial_attrs(document)
         self.run_process(html)
+
 
     def add_html_to_cell(self, html, cell):
         if not isinstance(cell, docx.table._Cell):
