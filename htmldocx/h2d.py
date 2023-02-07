@@ -419,7 +419,10 @@ class HtmlToDocx(HTMLParser):
             self.tags['list'].append(tag)
             return # don't apply styles for now
         elif tag == 'br':
-            self.run.add_break()
+            try:
+                self.run.add_break()
+            except AttributeError: #If <br> is the first element parsed, self.run will not be defined
+                self.doc.add_paragraph()
             return
 
         self.tags[tag] = current_attrs
