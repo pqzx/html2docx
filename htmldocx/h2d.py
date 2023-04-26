@@ -30,7 +30,7 @@ from bs4 import BeautifulSoup
 # values in inches
 INDENT = 0.25
 LIST_INDENT = 0.5
-MAX_INDENT = 5.5 # To stop indents going off the page
+MAX_INDENT = 5.5  # To stop indents going off the page
 
 # Style to use with tables. By default no style is used.
 DEFAULT_TABLE_STYLE = None
@@ -42,17 +42,19 @@ DEFAULT_PARAGRAPH_STYLE = None
 def get_filename_from_url(url):
     return os.path.basename(urlparse(url).path)
 
+
 def is_url(url):
     """
-    Not to be used for actually validating a url, but in our use case we only 
+    Not to be used for actually validating a url, but in our use case we only
     care if it's a url or a file path, and they're pretty distinguishable
     """
     parts = urlparse(url)
     return all([parts.scheme, parts.netloc, parts.path])
 
+
 def fetch_image(url):
     """
-    Attempts to fetch an image from a url. 
+    Attempts to fetch an image from a url.
     If successful returns a bytes object, else returns None
 
     :return:
@@ -64,8 +66,10 @@ def fetch_image(url):
     except urllib.error.URLError:
         return None
 
+
 def remove_last_occurence(ls, x):
     ls.pop(len(ls) - ls[::-1].index(x) - 1)
+
 
 def remove_whitespace(string, leading=False, trailing=False):
     """Remove white space from a string.
@@ -121,16 +125,17 @@ def remove_whitespace(string, leading=False, trailing=False):
     """
     # Remove any leading new line characters along with any surrounding white space
     if leading:
-        string = re.sub(r'^\s*\n+\s*', '', string)
+        string = re.sub(r"^\s*\n+\s*", "", string)
 
     # Remove any trailing new line characters along with any surrounding white space
     if trailing:
-        string = re.sub(r'\s*\n+\s*$', '', string)
+        string = re.sub(r"\s*\n+\s*$", "", string)
 
     # Replace new line characters and absorb any surrounding space.
-    string = re.sub(r'\s*\n\s*', ' ', string)
+    string = re.sub(r"\s*\n\s*", " ", string)
     # TODO need some way to get rid of extra spaces in e.g. text <span>   </span>  text
-    return re.sub(r'\s+', ' ', string)
+    return re.sub(r"\s+", " ", string)
+
 
 def delete_paragraph(paragraph):
     # https://github.com/python-openxml/python-docx/issues/33#issuecomment-77661907
@@ -138,61 +143,62 @@ def delete_paragraph(paragraph):
     p.getparent().remove(p)
     p._p = p._element = None
 
+
 font_styles = {
-    'b': 'bold',
-    'strong': 'bold',
-    'em': 'italic',
-    'i': 'italic',
-    'u': 'underline',
-    's': 'strike',
-    'sup': 'superscript',
-    'sub': 'subscript',
-    'th': 'bold',
+    "b": "bold",
+    "strong": "bold",
+    "em": "italic",
+    "i": "italic",
+    "u": "underline",
+    "s": "strike",
+    "sup": "superscript",
+    "sub": "subscript",
+    "th": "bold",
 }
 
 font_names = {
-    'code': 'Courier',
-    'pre': 'Courier',
+    "code": "Courier",
+    "pre": "Courier",
 }
 
 styles = {
-    'LIST_BULLET': 'List Bullet',
-    'LIST_NUMBER': 'List Number',
+    "LIST_BULLET": "List Bullet",
+    "LIST_NUMBER": "List Number",
 }
 
-class HtmlToDocx(HTMLParser):
 
+class HtmlToDocx(HTMLParser):
     def __init__(self):
         super().__init__()
         self.options = {
-            'fix-html': True,
-            'images': True,
-            'tables': True,
-            'styles': True,
+            "fix-html": True,
+            "images": True,
+            "tables": True,
+            "styles": True,
         }
         self.table_row_selectors = [
-            'table > tr',
-            'table > thead > tr',
-            'table > tbody > tr',
-            'table > tfoot > tr'
+            "table > tr",
+            "table > thead > tr",
+            "table > tbody > tr",
+            "table > tfoot > tr",
         ]
         self.table_style = DEFAULT_TABLE_STYLE
         self.paragraph_style = DEFAULT_PARAGRAPH_STYLE
 
     def set_initial_attrs(self, document=None):
         self.tags = {
-            'span': [],
-            'list': [],
+            "span": [],
+            "list": [],
         }
         if document:
             self.doc = document
         else:
             self.doc = Document()
-        self.bs = self.options['fix-html'] # whether or not to clean with BeautifulSoup
+        self.bs = self.options["fix-html"]  # whether or not to clean with BeautifulSoup
         self.document = self.doc
-        self.include_tables = True #TODO add this option back in?
-        self.include_images = self.options['images']
-        self.include_styles = self.options['styles']
+        self.include_tables = True  # TODO add this option back in?
+        self.include_images = self.options["images"]
+        self.include_styles = self.options["styles"]
         self.paragraph = None
         self.skip = False
         self.skip_tag = None
@@ -207,51 +213,53 @@ class HtmlToDocx(HTMLParser):
         # Returns string of td element with opening and closing <td> tags removed
         # Cannot use find_all as it only finds element tags and does not find text which
         # is not inside an element
-        return ' '.join([str(i) for i in soup.contents])
+        return " ".join([str(i) for i in soup.contents])
 
     def add_styles_to_paragraph(self, style):
-        if 'text-align' in style:
-            align = style['text-align']
-            if align == 'center':
+        if "text-align" in style:
+            align = style["text-align"]
+            if align == "center":
                 self.paragraph.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            elif align == 'right':
+            elif align == "right":
                 self.paragraph.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            elif align == 'justify':
+            elif align == "justify":
                 self.paragraph.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        if 'margin-left' in style:
-            margin = style['margin-left']
-            units = re.sub(r'[0-9]+', '', margin)
-            margin = int(float(re.sub(r'[a-z]+', '', margin)))
-            if units == 'px':
-                self.paragraph.paragraph_format.left_indent = Inches(min(margin // 10 * INDENT, MAX_INDENT))
+        if "margin-left" in style:
+            margin = style["margin-left"]
+            units = re.sub(r"[0-9]+", "", margin)
+            margin = int(float(re.sub(r"[a-z]+", "", margin)))
+            if units == "px":
+                self.paragraph.paragraph_format.left_indent = Inches(
+                    min(margin // 10 * INDENT, MAX_INDENT)
+                )
             # TODO handle non px units
 
     def add_styles_to_run(self, style):
-        if 'color' in style:
-            if 'rgb' in style['color']:
-                color = re.sub(r'[a-z()]+', '', style['color'])
-                colors = [int(x) for x in color.split(',')]
-            elif '#' in style['color']:
-                color = style['color'].lstrip('#')
-                colors = tuple(int(color[i:i+2], 16) for i in (0, 2, 4))
+        if "color" in style:
+            if "rgb" in style["color"]:
+                color = re.sub(r"[a-z()]+", "", style["color"])
+                colors = [int(x) for x in color.split(",")]
+            elif "#" in style["color"]:
+                color = style["color"].lstrip("#")
+                colors = tuple(int(color[i : i + 2], 16) for i in (0, 2, 4))
             else:
                 colors = [0, 0, 0]
                 # TODO map colors to named colors (and extended colors...)
                 # For now set color to black to prevent crashing
             self.run.font.color.rgb = RGBColor(*colors)
-            
-        if 'background-color' in style:
-            if 'rgb' in style['background-color']:
-                color = color = re.sub(r'[a-z()]+', '', style['background-color'])
-                colors = [int(x) for x in color.split(',')]
-            elif '#' in style['background-color']:
-                color = style['background-color'].lstrip('#')
-                colors = tuple(int(color[i:i+2], 16) for i in (0, 2, 4))
+
+        if "background-color" in style:
+            if "rgb" in style["background-color"]:
+                color = color = re.sub(r"[a-z()]+", "", style["background-color"])
+                colors = [int(x) for x in color.split(",")]
+            elif "#" in style["background-color"]:
+                color = style["background-color"].lstrip("#")
+                colors = tuple(int(color[i : i + 2], 16) for i in (0, 2, 4))
             else:
                 colors = [0, 0, 0]
                 # TODO map colors to named colors (and extended colors...)
                 # For now set color to black to prevent crashing
-            self.run.font.highlight_color = WD_COLOR.GRAY_25 #TODO: map colors
+            self.run.font.highlight_color = WD_COLOR.GRAY_25  # TODO: map colors
 
     def apply_paragraph_style(self, style=None):
         try:
@@ -262,26 +270,28 @@ class HtmlToDocx(HTMLParser):
         except KeyError as e:
             raise ValueError(f"Unable to apply style {self.paragraph_style}.") from e
 
-    def parse_dict_string(self, string, separator=';'):
-        new_string = string.replace(" ", '').split(separator)
-        string_dict = dict([x.split(':') for x in new_string if ':' in x])
+    def parse_dict_string(self, string, separator=";"):
+        new_string = string.replace(" ", "").split(separator)
+        string_dict = dict([x.split(":") for x in new_string if ":" in x])
         return string_dict
 
     def handle_li(self):
         # check list stack to determine style and depth
-        list_depth = len(self.tags['list'])
+        list_depth = len(self.tags["list"])
         if list_depth:
-            list_type = self.tags['list'][-1]
+            list_type = self.tags["list"][-1]
         else:
-            list_type = 'ul' # assign unordered if no tag
+            list_type = "ul"  # assign unordered if no tag
 
-        if list_type == 'ol':
-            list_style = styles['LIST_NUMBER']
+        if list_type == "ol":
+            list_style = styles["LIST_NUMBER"]
         else:
-            list_style = styles['LIST_BULLET']
+            list_style = styles["LIST_BULLET"]
 
-        self.paragraph = self.doc.add_paragraph(style=list_style)            
-        self.paragraph.paragraph_format.left_indent = Inches(min(list_depth * LIST_INDENT, MAX_INDENT))
+        self.paragraph = self.doc.add_paragraph(style=list_style)
+        self.paragraph.paragraph_format.left_indent = Inches(
+            min(list_depth * LIST_INDENT, MAX_INDENT)
+        )
         self.paragraph.paragraph_format.line_spacing = 1
 
     def add_image_to_cell(self, cell, image):
@@ -293,9 +303,9 @@ class HtmlToDocx(HTMLParser):
     def handle_img(self, current_attrs):
         if not self.include_images:
             self.skip = True
-            self.skip_tag = 'img'
+            self.skip_tag = "img"
             return
-        src = current_attrs['src']
+        src = current_attrs["src"]
         # fetch image
         src_is_url = is_url(src)
         if src_is_url:
@@ -347,7 +357,7 @@ class HtmlToDocx(HTMLParser):
             cell_col = 0
             for col in cols:
                 cell_html = self.get_cell_html(col)
-                if col.name == 'th':
+                if col.name == "th":
                     cell_html = "<b>%s</b>" % cell_html
                 docx_cell = self.table.cell(cell_row, cell_col)
                 child_parser = HtmlToDocx()
@@ -355,39 +365,38 @@ class HtmlToDocx(HTMLParser):
                 child_parser.add_html_to_cell(cell_html, docx_cell)
                 cell_col += 1
             cell_row += 1
-        
+
         # skip all tags until corresponding closing tag
-        self.instances_to_skip = len(table_soup.find_all('table'))
-        self.skip_tag = 'table'
+        self.instances_to_skip = len(table_soup.find_all("table"))
+        self.skip_tag = "table"
         self.skip = True
         self.table = None
 
     def handle_link(self, href, text):
         # Link requires a relationship
-        is_external = href.startswith('http')
+        is_external = href.startswith("http")
         rel_id = self.paragraph.part.relate_to(
             href,
             docx.opc.constants.RELATIONSHIP_TYPE.HYPERLINK,
-            is_external=True  # don't support anchor links for this library yet
+            is_external=True,  # don't support anchor links for this library yet
         )
 
         # Create the w:hyperlink tag and add needed values
-        hyperlink = docx.oxml.shared.OxmlElement('w:hyperlink')
-        hyperlink.set(docx.oxml.shared.qn('r:id'), rel_id)
-
+        hyperlink = docx.oxml.shared.OxmlElement("w:hyperlink")
+        hyperlink.set(docx.oxml.shared.qn("r:id"), rel_id)
 
         # Create sub-run
         subrun = self.paragraph.add_run()
-        rPr = docx.oxml.shared.OxmlElement('w:rPr')
+        rPr = docx.oxml.shared.OxmlElement("w:rPr")
 
         # add default color
-        c = docx.oxml.shared.OxmlElement('w:color')
-        c.set(docx.oxml.shared.qn('w:val'), "0000EE")
+        c = docx.oxml.shared.OxmlElement("w:color")
+        c.set(docx.oxml.shared.qn("w:val"), "0000EE")
         rPr.append(c)
 
         # add underline
-        u = docx.oxml.shared.OxmlElement('w:u')
-        u.set(docx.oxml.shared.qn('w:val'), 'single')
+        u = docx.oxml.shared.OxmlElement("w:u")
+        u.set(docx.oxml.shared.qn("w:val"), "single")
         rPr.append(u)
 
         subrun._r.append(rPr)
@@ -402,82 +411,102 @@ class HtmlToDocx(HTMLParser):
     def handle_starttag(self, tag, attrs):
         if self.skip:
             return
-        if tag == 'head':
+        if tag == "head":
             self.skip = True
             self.skip_tag = tag
             self.instances_to_skip = 0
             return
-        elif tag == 'body':
+        elif tag == "body":
             return
 
         current_attrs = dict(attrs)
 
-        if tag == 'span':
-            self.tags['span'].append(current_attrs)
+        if tag == "span":
+            self.tags["span"].append(current_attrs)
             return
-        elif tag == 'ol' or tag == 'ul':
-            self.tags['list'].append(tag)
-            return # don't apply styles for now
-        elif tag == 'br':
+        elif tag == "ol" or tag == "ul":
+            self.tags["list"].append(tag)
+            return  # don't apply styles for now
+        elif tag == "br":
             self.run.add_break()
             return
 
         self.tags[tag] = current_attrs
-        if tag in ['p', 'pre']:
+        if tag in ["p", "pre"]:
             self.paragraph = self.doc.add_paragraph()
             self.apply_paragraph_style()
 
-        elif tag == 'li':
+        elif tag == "li":
             self.handle_li()
 
         elif tag == "hr":
-
             # This implementation was taken from:
             # https://github.com/python-openxml/python-docx/issues/105#issuecomment-62806373
 
             self.paragraph = self.doc.add_paragraph()
             pPr = self.paragraph._p.get_or_add_pPr()
-            pBdr = OxmlElement('w:pBdr')
-            pPr.insert_element_before(pBdr,
-                'w:shd', 'w:tabs', 'w:suppressAutoHyphens', 'w:kinsoku', 'w:wordWrap',
-                'w:overflowPunct', 'w:topLinePunct', 'w:autoSpaceDE', 'w:autoSpaceDN',
-                'w:bidi', 'w:adjustRightInd', 'w:snapToGrid', 'w:spacing', 'w:ind',
-                'w:contextualSpacing', 'w:mirrorIndents', 'w:suppressOverlap', 'w:jc',
-                'w:textDirection', 'w:textAlignment', 'w:textboxTightWrap',
-                'w:outlineLvl', 'w:divId', 'w:cnfStyle', 'w:rPr', 'w:sectPr',
-                'w:pPrChange'
+            pBdr = OxmlElement("w:pBdr")
+            pPr.insert_element_before(
+                pBdr,
+                "w:shd",
+                "w:tabs",
+                "w:suppressAutoHyphens",
+                "w:kinsoku",
+                "w:wordWrap",
+                "w:overflowPunct",
+                "w:topLinePunct",
+                "w:autoSpaceDE",
+                "w:autoSpaceDN",
+                "w:bidi",
+                "w:adjustRightInd",
+                "w:snapToGrid",
+                "w:spacing",
+                "w:ind",
+                "w:contextualSpacing",
+                "w:mirrorIndents",
+                "w:suppressOverlap",
+                "w:jc",
+                "w:textDirection",
+                "w:textAlignment",
+                "w:textboxTightWrap",
+                "w:outlineLvl",
+                "w:divId",
+                "w:cnfStyle",
+                "w:rPr",
+                "w:sectPr",
+                "w:pPrChange",
             )
-            bottom = OxmlElement('w:bottom')
-            bottom.set(qn('w:val'), 'single')
-            bottom.set(qn('w:sz'), '6')
-            bottom.set(qn('w:space'), '1')
-            bottom.set(qn('w:color'), 'auto')
+            bottom = OxmlElement("w:bottom")
+            bottom.set(qn("w:val"), "single")
+            bottom.set(qn("w:sz"), "6")
+            bottom.set(qn("w:space"), "1")
+            bottom.set(qn("w:color"), "auto")
             pBdr.append(bottom)
 
-        elif re.match('h[1-9]', tag):
+        elif re.match("h[1-9]", tag):
             if isinstance(self.doc, docx.document.Document):
                 h_size = int(tag[1])
                 self.paragraph = self.doc.add_heading(level=min(h_size, 9))
             else:
                 self.paragraph = self.doc.add_paragraph()
 
-        elif tag == 'img':
+        elif tag == "img":
             self.handle_img(current_attrs)
             return
 
-        elif tag == 'table':
+        elif tag == "table":
             self.handle_table()
             return
 
         # set new run reference point in case of leading line breaks
-        if tag in ['p', 'li', 'pre']:
+        if tag in ["p", "li", "pre"]:
             self.run = self.paragraph.add_run()
 
         # add style
         if not self.include_styles:
             return
-        if 'style' in current_attrs and self.paragraph:
-            style = self.parse_dict_string(current_attrs['style'])
+        if "style" in current_attrs and self.paragraph:
+            style = self.parse_dict_string(current_attrs["style"])
             self.add_styles_to_paragraph(style)
 
     def handle_endtag(self, tag):
@@ -493,14 +522,14 @@ class HtmlToDocx(HTMLParser):
             self.skip_tag = None
             self.paragraph = None
 
-        if tag == 'span':
-            if self.tags['span']:
-                self.tags['span'].pop()
+        if tag == "span":
+            if self.tags["span"]:
+                self.tags["span"].pop()
                 return
-        elif tag == 'ol' or tag == 'ul':
-            remove_last_occurence(self.tags['list'], tag)
+        elif tag == "ol" or tag == "ul":
+            remove_last_occurence(self.tags["list"], tag)
             return
-        elif tag == 'table':
+        elif tag == "table":
             self.table_no += 1
             self.table = None
             self.doc = self.document
@@ -515,7 +544,7 @@ class HtmlToDocx(HTMLParser):
             return
 
         # Only remove white space if we're not in a pre block.
-        if 'pre' not in self.tags:
+        if "pre" not in self.tags:
             # remove leading and trailing whitespace in all instances
             data = remove_whitespace(data, True, True)
 
@@ -526,16 +555,16 @@ class HtmlToDocx(HTMLParser):
         # There can only be one nested link in a valid html document
         # You cannot have interactive content in an A tag, this includes links
         # https://html.spec.whatwg.org/#interactive-content
-        link = self.tags.get('a')
+        link = self.tags.get("a")
         if link:
-            self.handle_link(link['href'], data)
+            self.handle_link(link["href"], data)
         else:
             # If there's a link, dont put the data directly in the run
             self.run = self.paragraph.add_run(data)
-            spans = self.tags['span']
+            spans = self.tags["span"]
             for span in spans:
-                if 'style' in span:
-                    style = self.parse_dict_string(span['style'])
+                if "style" in span:
+                    style = self.parse_dict_string(span["style"])
                     self.add_styles_to_run(style)
 
             # add font style and name
@@ -563,16 +592,16 @@ class HtmlToDocx(HTMLParser):
                 nest -= 1
                 continue
             new_tables.append(table)
-            nest = len(table.find_all('table'))
+            nest = len(table.find_all("table"))
         return new_tables
 
     def get_table_rows(self, table_soup):
         # If there's a header, body, footer or direct child tr tags, add row dimensions from there
-        return table_soup.select(', '.join(self.table_row_selectors), recursive=False)
+        return table_soup.select(", ".join(self.table_row_selectors), recursive=False)
 
     def get_table_columns(self, row):
         # Get all columns for the specified row tag.
-        return row.find_all(['th', 'td'], recursive=False) if row else []
+        return row.find_all(["th", "td"], recursive=False) if row else []
 
     def get_table_dimensions(self, table_soup):
         # Get rows for the table
@@ -584,16 +613,16 @@ class HtmlToDocx(HTMLParser):
         return len(rows), len(cols)
 
     def get_tables(self):
-        if not hasattr(self, 'soup'):
+        if not hasattr(self, "soup"):
             self.include_tables = False
             return
             # find other way to do it, or require this dependency?
-        self.tables = self.ignore_nested_tables(self.soup.find_all('table'))  
+        self.tables = self.ignore_nested_tables(self.soup.find_all("table"))
         self.table_no = 0
 
     def run_process(self, html):
         if self.bs and BeautifulSoup:
-            self.soup = BeautifulSoup(html, 'html.parser')
+            self.soup = BeautifulSoup(html, "html.parser")
             html = str(self.soup)
         if self.include_tables:
             self.get_tables()
@@ -601,15 +630,19 @@ class HtmlToDocx(HTMLParser):
 
     def add_html_to_document(self, html, document):
         if not isinstance(html, str):
-            raise ValueError('First argument needs to be a %s' % str)
-        elif not isinstance(document, docx.document.Document) and not isinstance(document, docx.table._Cell):
-            raise ValueError('Second argument needs to be a %s' % docx.document.Document)
+            raise ValueError("First argument needs to be a %s" % str)
+        elif not isinstance(document, docx.document.Document) and not isinstance(
+            document, docx.table._Cell
+        ):
+            raise ValueError(
+                "Second argument needs to be a %s" % docx.document.Document
+            )
         self.set_initial_attrs(document)
         self.run_process(html)
 
     def add_html_to_cell(self, html, cell):
         if not isinstance(cell, docx.table._Cell):
-            raise ValueError('Second argument needs to be a %s' % docx.table._Cell)
+            raise ValueError("Second argument needs to be a %s" % docx.table._Cell)
         unwanted_paragraph = cell.paragraphs[0]
         if unwanted_paragraph.text == "":
             delete_paragraph(unwanted_paragraph)
@@ -618,37 +651,42 @@ class HtmlToDocx(HTMLParser):
         # cells must end with a paragraph or will get message about corrupt file
         # https://stackoverflow.com/a/29287121
         if not self.doc.paragraphs:
-            self.doc.add_paragraph('')  
+            self.doc.add_paragraph("")
 
     def parse_html_file(self, filename_html, filename_docx=None):
-        with open(filename_html, 'r') as infile:
+        with open(filename_html, "r") as infile:
             html = infile.read()
         self.set_initial_attrs()
         self.run_process(html)
         if not filename_docx:
             path, filename = os.path.split(filename_html)
-            filename_docx = '%s/new_docx_file_%s' % (path, filename)
-        self.doc.save('%s.docx' % filename_docx)
-    
+            filename_docx = "%s/new_docx_file_%s" % (path, filename)
+        self.doc.save("%s.docx" % filename_docx)
+
     def parse_html_string(self, html):
         self.set_initial_attrs()
         self.run_process(html)
         return self.doc
 
-if __name__=='__main__':
-    
-    arg_parser = argparse.ArgumentParser(description='Convert .html file into .docx file with formatting')
-    arg_parser.add_argument('filename_html', help='The .html file to be parsed')
-    arg_parser.add_argument(
-        'filename_docx', 
-        nargs='?', 
-        help='The name of the .docx file to be saved. Default new_docx_file_[filename_html]', 
-        default=None
+
+if __name__ == "__main__":
+    arg_parser = argparse.ArgumentParser(
+        description="Convert .html file into .docx file with formatting"
     )
-    arg_parser.add_argument('--bs', action='store_true', 
-        help='Attempt to fix html before parsing. Requires bs4. Default True')
+    arg_parser.add_argument("filename_html", help="The .html file to be parsed")
+    arg_parser.add_argument(
+        "filename_docx",
+        nargs="?",
+        help="The name of the .docx file to be saved. Default new_docx_file_[filename_html]",
+        default=None,
+    )
+    arg_parser.add_argument(
+        "--bs",
+        action="store_true",
+        help="Attempt to fix html before parsing. Requires bs4. Default True",
+    )
 
     args = vars(arg_parser.parse_args())
-    file_html = args.pop('filename_html')
+    file_html = args.pop("filename_html")
     html_parser = HtmlToDocx()
     html_parser.parse_html_file(file_html, **args)
