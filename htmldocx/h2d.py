@@ -356,14 +356,27 @@ class HtmlToDocx(HTMLParser):
             cols = self.get_table_columns(row)
             cell_col = 0
             for col in cols:
+                colspan = int(col.attrs.get("colspan", 1))
+                rowspan = int(col.attrs.get("rowspan", 1))
                 cell_html = self.get_cell_html(col)
                 if col.name == "th":
                     cell_html = "<b>%s</b>" % cell_html
                 docx_cell = self.table.cell(cell_row, cell_col)
+                # we skip merged cells
+                while docx_cell.text != "":
+                    cell_col += 1
+                    docx_cell = self.table.cell(cell_row, cell_col)
+
+                cell_to_merge = self.table.cell(
+                    cell_row + rowspan - 1, cell_col + colspan - 1
+                )
+                # if they arent the same cell, merge them
+                if docx_cell != cell_to_merge:
+                    docx_cell.merge(cell_to_merge)
                 child_parser = HtmlToDocx()
                 child_parser.copy_settings_from(self)
-                child_parser.add_html_to_cell(cell_html, docx_cell)
-                cell_col += 1
+                child_parser.add_html_to_cell(cell_html or " ", docx_cell)
+                cell_col += colspan
             cell_row += 1
 
         # skip all tags until corresponding closing tag
@@ -610,7 +623,13 @@ class HtmlToDocx(HTMLParser):
         # Thus the row dimensions and column dimensions are assumed to be 0
 
         cols = self.get_table_columns(rows[0]) if rows else []
-        return len(rows), len(cols)
+        # Add colspan calculation column number
+        cols_count = 0
+        for col in cols:
+            colspan = col.attrs.get("colspan", 1)
+            cols_count += int(colspan)
+
+        return len(rows), cols_count
 
     def get_tables(self):
         if not hasattr(self, "soup"):
