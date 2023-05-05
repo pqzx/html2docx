@@ -342,6 +342,7 @@ class HtmlToDocx(HTMLParser):
 
         rows = self.get_table_rows(table_soup)
         cell_row = 0
+        docx_cells = self.table._cells
         for row in rows:
             cols = self.get_table_columns(row)
             cell_col = 0
@@ -349,7 +350,7 @@ class HtmlToDocx(HTMLParser):
                 cell_html = self.get_cell_html(col)
                 if col.name == 'th':
                     cell_html = "<b>%s</b>" % cell_html
-                docx_cell = self.table.cell(cell_row, cell_col)
+                docx_cell = docx_cells[cell_col + (cell_row * self.table._column_count)]
                 child_parser = HtmlToDocx()
                 child_parser.copy_settings_from(self)
                 child_parser.add_html_to_cell(cell_html, docx_cell)
