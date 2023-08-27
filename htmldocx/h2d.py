@@ -620,8 +620,8 @@ class HtmlToDocx(HTMLParser):
         if not self.doc.paragraphs:
             self.doc.add_paragraph('')  
 
-    def parse_html_file(self, filename_html, filename_docx=None):
-        with open(filename_html, 'r') as infile:
+    def parse_html_file(self, filename_html, filename_docx=None, encoding='utf-8'):
+        with open(filename_html, 'r', encoding=encoding) as infile:
             html = infile.read()
         self.set_initial_attrs()
         self.run_process(html)
