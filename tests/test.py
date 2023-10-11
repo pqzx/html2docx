@@ -4,6 +4,7 @@ import unittest
 from docx import Document
 from .context import HtmlToDocx, test_dir
 
+
 class OutputTest(unittest.TestCase):
 
     @staticmethod
@@ -204,6 +205,39 @@ and blank lines.
             level=1
         )
         self.parser.add_html_to_document("<p>paragraph</p><hr><p>paragraph</p>", self.document)
+
+    def test_image_sizes(self):
+        self.document.add_heading(
+            'Test: Handling of Img sizes',
+            level=1
+        )
+        self.document.add_paragraph("No width")
+        self.parser.add_html_to_document(
+            "<img src='https://raw.githubusercontent.com/pqzx/h2d/master/testimg.png' />", self.document)
+
+        self.document.add_paragraph("400px")
+        self.parser.add_html_to_document(
+            "<img src='https://raw.githubusercontent.com/pqzx/h2d/master/testimg.png' width='400' />",
+            self.document)
+
+        self.document.add_paragraph("800px, larger than page")
+        self.parser.add_html_to_document(
+            "<img src='https://raw.githubusercontent.com/pqzx/h2d/master/testimg.png' width='800' />",
+            self.document)
+
+
+        self.document.add_paragraph("An image larger than the page")
+        self.parser.add_html_to_document(
+            # Attribution: https://commons.wikimedia.org/wiki/Category:Commons_featured_desktop_backgrounds#/media/File:A_storm_at_Pors-Loubous.jpg
+            "<img src='https://upload.wikimedia.org/wikipedia/commons/8/88/A_storm_at_Pors-Loubous.jpg' />",
+            self.document)
+
+    def test_image_no_src(self):
+        self.document.add_heading(
+            'Test: Handling IMG without SRC',
+            level=1
+        )
+        self.parser.add_html_to_document("<img />", self.document)
 
 
 if __name__ == '__main__':

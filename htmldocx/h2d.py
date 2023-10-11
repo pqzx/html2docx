@@ -22,6 +22,7 @@ import docx, docx.table
 from docx import Document
 from docx.shared import RGBColor, Pt, Inches
 from docx.enum.text import WD_COLOR, WD_ALIGN_PARAGRAPH
+from docx.image.image import Image
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
@@ -155,10 +156,6 @@ font_names = {
     'pre': 'Courier',
 }
 
-styles = {
-    'LIST_BULLET': 'List Bullet',
-    'LIST_NUMBER': 'List Number',
-}
 
 class HtmlToDocx(HTMLParser):
 
@@ -178,6 +175,8 @@ class HtmlToDocx(HTMLParser):
         ]
         self.table_style = DEFAULT_TABLE_STYLE
         self.paragraph_style = DEFAULT_PARAGRAPH_STYLE
+        self.ul_style = "List Bullet"
+        self.ol_style = "List Number"
 
     def set_initial_attrs(self, document=None):
         self.tags = {
@@ -276,9 +275,9 @@ class HtmlToDocx(HTMLParser):
             list_type = 'ul' # assign unordered if no tag
 
         if list_type == 'ol':
-            list_style = styles['LIST_NUMBER']
+            list_style = self.ol_style
         else:
-            list_style = styles['LIST_BULLET']
+            list_style = self.ul_style
 
         self.paragraph = self.doc.add_paragraph(style=list_style)            
         self.paragraph.paragraph_format.left_indent = Inches(min(list_depth * LIST_INDENT, MAX_INDENT))
@@ -295,7 +294,11 @@ class HtmlToDocx(HTMLParser):
             self.skip = True
             self.skip_tag = 'img'
             return
-        src = current_attrs['src']
+        src = current_attrs.get('src')
+        if not src:
+            self.doc.add_paragraph("<image: no_src>")
+            return
+
         # fetch image
         src_is_url = is_url(src)
         if src_is_url:
@@ -309,7 +312,18 @@ class HtmlToDocx(HTMLParser):
         if image:
             try:
                 if isinstance(self.doc, docx.document.Document):
-                    self.doc.add_picture(image)
+                    try:
+                        attr_width = int(current_attrs.get('width'))
+                    except:
+                        attr_width = None
+                    if attr_width is not None:
+                        # Get horizontal dpi
+                        dpi = Image.from_blob(image).horz_dpi
+                        # Convert pixels to inches
+                        img_inch_width = Inches(attr_width / dpi)
+                        self.doc.add_picture(image, width=img_inch_width)
+                    else:
+                        self.doc.add_picture(image)
                 else:
                     self.add_image_to_cell(self.doc, image)
             except FileNotFoundError:
