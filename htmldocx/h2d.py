@@ -295,7 +295,11 @@ class HtmlToDocx(HTMLParser):
             self.skip = True
             self.skip_tag = 'img'
             return
-        src = current_attrs['src']
+        src = current_attrs.get('src')
+        if not src:
+            self.doc.add_paragraph("<image: no_src>")
+            return
+
         # fetch image
         src_is_url = is_url(src)
         if src_is_url:

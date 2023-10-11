@@ -205,6 +205,13 @@ and blank lines.
         )
         self.parser.add_html_to_document("<p>paragraph</p><hr><p>paragraph</p>", self.document)
 
+    def test_image_no_src(self):
+        self.document.add_heading(
+            'Test: Handling img without src',
+            level=1
+        )
+        self.parser.add_html_to_document("<img />", self.document)
+
 
 if __name__ == '__main__':
     unittest.main()
