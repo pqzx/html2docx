@@ -1,10 +1,12 @@
 [project]
 name = "html3docx"
-version = "0.0.7"
+version = "0.0.8"
 authors = [
   {name="John Jordan"},
 ]
-description = "A fork of https://github.com/pqzx/html2docx.  This version will focus on expedient changes for my particular use case.  I may contribute ideas back to the main version, but it sees to be mostly dead."
+description = "A fork of https://github.com/pqzx/html2docx.  This version will focus on expedient changes for our particular use case."
+readme = "README.md"
+license = {file = "LICENSE"}
 
 [build-system]
 requires = ["setuptools>=61.0"]
