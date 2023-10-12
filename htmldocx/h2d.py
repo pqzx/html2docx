@@ -318,7 +318,7 @@ class HtmlToDocx(HTMLParser):
                         attr_width = None
                     if attr_width is not None:
                         # Get horizontal dpi
-                        dpi = Image.from_blob(image).horz_dpi
+                        dpi = Image.from_blob(image.read()).horz_dpi
                         # Convert pixels to inches
                         img_inch_width = Inches(attr_width / dpi)
                         self.doc.add_picture(image, width=img_inch_width)
@@ -433,7 +433,15 @@ class HtmlToDocx(HTMLParser):
             self.tags['list'].append(tag)
             return # don't apply styles for now
         elif tag == 'br':
-            self.run.add_break()
+            if hasattr(self, 'run'):
+                self.run.add_break()
+            else:
+                # This case happens when the HTML snippet begins with a <br />
+                # Trade-off: This yields an empty paragraph instead of a line break.  But if we were to add a
+                # line break to this paragraph, we would end up with 2 empty lines in the document instead of one.
+                # I think in this case, I would rather have the one empty paragraph than 2 empty lines.
+                self.paragraph = self.doc.add_paragraph()
+                self.run = self.paragraph.add_run()
             return
 
         self.tags[tag] = current_attrs

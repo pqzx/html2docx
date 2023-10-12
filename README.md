@@ -1,11 +1,19 @@
-# htmldocx
-Convert html to docx
+# html3docx
+A fork of https://github.com/pqzx/html2docx.  This version will focus on expedient changes for our particular use case.
 
 Dependencies: `python-docx` & `bs4`
 
 ### To install
 
-`pip install htmldocx`
+`pip install html3docx`
+
+### Improvements
+
+- Fix for KeyError when handling an img tag without a src attribute.
+- Images with a width attribute will be scaled according to that width.
+- Fix for AttributeError when handling a leading br tag, either at the top of the HTML snippet, or within a td or th cell.
+
+## Original README
 
 ### Usage
 

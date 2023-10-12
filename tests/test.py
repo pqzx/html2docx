@@ -239,6 +239,24 @@ and blank lines.
         )
         self.parser.add_html_to_document("<img />", self.document)
 
+    def test_br_in_table(self):
+        # A <br /> in a <table>, but not in a <td>, is illegal.
+        self.document.add_heading(
+            'Test: Handling BR in TABLE',
+            level=1
+        )
+        self.parser.add_html_to_document(
+            "<table><tr>"
+            "<td><p>Hello</p></td>"
+            "<td><br /><p>Hello</p></td>"
+            "<td><p>Hello<br />goodbye</p></td>"
+            "</tr></table>",
+            self.document)
+
+    def test_leading_br(self):
+        self.document.add_heading('Test: Leading BR', level=1)
+        self.parser.add_html_to_document("<br /><p>Hello</p>", self.document)
+
 
 if __name__ == '__main__':
     unittest.main()
