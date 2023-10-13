@@ -205,6 +205,19 @@ and blank lines.
         )
         self.parser.add_html_to_document("<p>paragraph</p><hr><p>paragraph</p>", self.document)
 
+    def test_unbalanced_table(self):
+        # A table with more td elements in latter rows than in the first
+        self.document.add_heading(
+            'Test: Handling unbalanced tables',
+            level=1
+        )
+        self.parser.add_html_to_document(
+            "<table>"
+            "<tr><td>Hello</td></tr>"
+            "<tr><td>One</td><td>Two</td></tr>"
+            "</table>",
+            self.document)
+
 
 if __name__ == '__main__':
     unittest.main()
