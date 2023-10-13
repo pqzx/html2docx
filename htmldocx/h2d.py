@@ -579,9 +579,13 @@ class HtmlToDocx(HTMLParser):
         rows = self.get_table_rows(table_soup)
         # Table is either empty or has non-direct children between table and tr tags
         # Thus the row dimensions and column dimensions are assumed to be 0
-
-        cols = self.get_table_columns(rows[0]) if rows else []
-        return len(rows), len(cols)
+        # A table can have a varying number of columns per row,
+        #     so it is important to find the maximum number of columns in any row
+        if rows:
+            cols = max(len(self.get_table_columns(row)) for row in rows)
+        else:
+            cols = 0
+        return len(rows), cols
 
     def get_tables(self):
         if not hasattr(self, 'soup'):
