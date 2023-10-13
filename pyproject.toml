@@ -1,6 +1,6 @@
 [project]
 name = "html3docx"
-version = "0.0.8"
+version = "0.0.9"
 authors = [
   {name="John Jordan"},
 ]

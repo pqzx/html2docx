@@ -12,6 +12,7 @@ Dependencies: `python-docx` & `bs4`
 - Fix for KeyError when handling an img tag without a src attribute.
 - Images with a width attribute will be scaled according to that width.
 - Fix for AttributeError when handling a leading br tag, either at the top of the HTML snippet, or within a td or th cell.
+- Fix for IndexError when a table has more cells in latter rows than in the first row.
 
 ## Original README
 
