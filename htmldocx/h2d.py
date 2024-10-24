@@ -601,11 +601,30 @@ class HtmlToDocx(HTMLParser):
 
     def add_html_to_document(self, html, document):
         if not isinstance(html, str):
-            raise ValueError('First argument needs to be a %s' % str)
+            raise ValueError('First argument needs to be a string')
         elif not isinstance(document, docx.document.Document) and not isinstance(document, docx.table._Cell):
-            raise ValueError('Second argument needs to be a %s' % docx.document.Document)
+            raise ValueError('Second argument needs to be a Document or a Cell object')
+
         self.set_initial_attrs(document)
-        self.run_process(html)
+        soup = BeautifulSoup(html, 'html.parser')
+        self.paragraph = document.add_paragraph()
+        for element in soup.descendants:
+            if isinstance(element, str):
+                self.run = self.paragraph.add_run(element.strip())
+            elif element.name == 'img':
+
+                img_path = element.get('src')
+                width = element.get('width', 100)
+                height = element.get('height', 50)
+                self.run = self.paragraph.add_run()
+                self.run.add_picture(img_path, width=Inches(float(width) / 100), height=Inches(float(height) / 100))
+            else:
+                continue
+
+
+        paragraph_format = self.paragraph.paragraph_format
+        paragraph_format.line_spacing = 1.0
+        paragraph_format.keep_with_next = True
 
     def add_html_to_cell(self, html, cell):
         if not isinstance(cell, docx.table._Cell):
