@@ -226,6 +226,7 @@ class HtmlToDocx(HTMLParser):
                 self.paragraph.paragraph_format.left_indent = Inches(min(margin // 10 * INDENT, MAX_INDENT))
             # TODO handle non px units
 
+
     def add_styles_to_run(self, style):
         if 'color' in style:
             if 'rgb' in style['color']:
@@ -399,6 +400,9 @@ class HtmlToDocx(HTMLParser):
         # Add hyperlink to run
         self.paragraph._p.append(hyperlink)
 
+    def handle_pagebreak(self):
+        self.doc.add_page_break()
+
     def handle_starttag(self, tag, attrs):
         if self.skip:
             return
@@ -468,6 +472,13 @@ class HtmlToDocx(HTMLParser):
         elif tag == 'table':
             self.handle_table()
             return
+        # handle pagebreak using following html code
+        # <div style="page-break-after: always;"></div>
+        elif tag == 'div':
+            style = self.parse_dict_string(current_attrs['style'])
+            if(style.get('page-break-after', '') == 'always'):
+                self.handle_pagebreak()
+
 
         # set new run reference point in case of leading line breaks
         if tag in ['p', 'li', 'pre']:
