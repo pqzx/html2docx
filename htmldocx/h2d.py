@@ -20,8 +20,8 @@ from html.parser import HTMLParser
 
 import docx, docx.table
 from docx import Document
-from docx.shared import RGBColor, Pt, Inches
-from docx.enum.text import WD_COLOR, WD_ALIGN_PARAGRAPH
+from docx.shared import RGBColor, Inches
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_COLOR_INDEX
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
@@ -160,6 +160,39 @@ styles = {
     'LIST_NUMBER': 'List Number',
 }
 
+# We omit Black as it's usually not ideal as a highlight color
+# We use more common colors than the high contrast ones in Word's color palette, matching typical colors seen in documents
+COLOR_MAP = {
+    # WD_COLOR_INDEX.BLACK: (0, 0, 0),
+    WD_COLOR_INDEX.BLUE: (0, 0, 255),
+    WD_COLOR_INDEX.BRIGHT_GREEN: (0, 255, 0),
+    WD_COLOR_INDEX.DARK_BLUE: (0, 0, 139),
+    WD_COLOR_INDEX.DARK_RED: (139, 0, 0),
+    WD_COLOR_INDEX.DARK_YELLOW: (139, 139, 0),
+    WD_COLOR_INDEX.GRAY_25: (192, 192, 192),
+    WD_COLOR_INDEX.GRAY_50: (128, 128, 128),
+    WD_COLOR_INDEX.GREEN: (0, 128, 0),
+    WD_COLOR_INDEX.PINK: (255, 192, 203),
+    WD_COLOR_INDEX.RED: (255, 0, 0),
+    WD_COLOR_INDEX.TEAL: (0, 128, 128),
+    WD_COLOR_INDEX.TURQUOISE: (64, 224, 208),
+    WD_COLOR_INDEX.VIOLET: (128, 0, 255),
+    WD_COLOR_INDEX.WHITE: (255, 255, 255),
+    WD_COLOR_INDEX.YELLOW: (255, 255, 0),
+}
+
+def get_closest_wd_color(rgb_tuple):
+    """
+    Finds the closest WD_COLOR_INDEX to a given RGB tuple
+    using Euclidean distance.
+    """
+    r, g, b = rgb_tuple
+    
+    def distance_sq(c1, c2):
+        return (c1[0] - c2[0])**2 + (c1[1] - c2[1])**2 + (c1[2] - c2[2])**2
+
+    return min(COLOR_MAP.keys(), key=lambda k: distance_sq(COLOR_MAP[k], (r, g, b)))
+
 class HtmlToDocx(HTMLParser):
 
     def __init__(self):
@@ -248,10 +281,10 @@ class HtmlToDocx(HTMLParser):
                 color = style['background-color'].lstrip('#')
                 colors = tuple(int(color[i:i+2], 16) for i in (0, 2, 4))
             else:
-                colors = [0, 0, 0]
+                colors = [255, 255, 0]
                 # TODO map colors to named colors (and extended colors...)
-                # For now set color to black to prevent crashing
-            self.run.font.highlight_color = WD_COLOR.GRAY_25 #TODO: map colors
+                # For now set color to common yellow highlight
+            self.run.font.highlight_color = get_closest_wd_color(colors)
 
     def apply_paragraph_style(self, style=None):
         try:

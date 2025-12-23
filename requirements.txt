@@ -1,2 +1,2 @@
 beautifulsoup4==4.8.0
-python-docx==0.8.10
+python-docx==1.2.0
